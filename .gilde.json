@@ -1,0 +1,9 @@
+{
+  "name": "seshat",
+  "stacks": ["nestjs", "nextjs"],
+  "testCommands": ["pnpm test"],
+  "skills": {
+    "include": [],
+    "exclude": []
+  }
+}
