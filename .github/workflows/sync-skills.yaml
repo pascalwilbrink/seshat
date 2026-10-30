@@ -1,0 +1,42 @@
+# Copy to .github/workflows/sync-skills.yaml in a repo. No edits needed: which skills the repo
+# gets is configured in .gilde.json (stacks, skills.include, skills.exclude), and the sync logic
+# lives in gildeboek's scripts/sync.sh.
+# Requires: Settings → Actions → General → "Allow GitHub Actions to create and approve pull requests".
+name: Sync Gilde skills
+on:
+  schedule: [{ cron: '17 6 * * *' }]   # daily
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [.gilde.json]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/checkout@v4
+        with:
+          repository: Gilde-dev/gildeboek
+          path: .gildeboek
+          fetch-depth: 0
+
+      - name: Sync managed skills
+        run: |
+          bash .gildeboek/scripts/sync.sh .gildeboek .
+          rm -rf .gildeboek
+
+      - uses: peter-evans/create-pull-request@v7
+        with:
+          branch: gilde/sync-skills
+          title: "Sync skills from gildeboek"
+          commit-message: "chore: sync skills from gildeboek"
+          body: |
+            Updates managed skills from Gilde-dev/gildeboek, as configured in `.gilde.json`.
+            Managed skills have a `managed-by: gildeboek@<sha>` line in their frontmatter; change those in gildeboek, not here.
+            Skills without that line belong to this repo and are never touched by the sync.
