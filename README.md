@@ -14,7 +14,9 @@ as a read-only MCP server. Humans upload and manage documents through a web UI a
 - MCP over Streamable HTTP with a bearer token. Tools are read-only: search a collection, get a document, list
   collections. Upload, delete and re-index exist only in the API/UI, never in MCP.
 
-## Run and develop *(planned)*
+## Run and develop
+- Present: the pnpm workspace with a minimal `apps/api` (NestJS, `GET /api/health`) and `apps/web` (Next.js App Router), and `docker-compose.yml` with a Postgres + pgvector database for development. `pnpm install`, `pnpm test` and `pnpm build` work. The RAG domain, TypeORM/persistence, ingestion and MCP are not implemented yet.
+- Planned: the single Dockerfile that runs both apps in one container.
 - Requires Docker and Postgres with the pgvector extension (for example the `pgvector/pgvector` image).
 - Run everything in one container with Docker; for development use `pnpm install` and `pnpm dev`.
 - Configuration (database URL, MCP bearer token) comes from environment variables; exact names follow with the scaffold.
@@ -39,4 +41,4 @@ needs no change.
 
 ## Contributing
 Coding agents: read `AGENTS.md`. The Gilde manifest is `.gilde.json`; skills are synced into `.claude/skills/`
-by `.github/workflows/sync-skills.yaml`.
+by `.github/workflows/sync-skills.yaml`. Operator action: that workflow needs Settings → Actions → General → "Allow GitHub Actions to create and approve pull requests" enabled.

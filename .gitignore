@@ -8,3 +8,5 @@ coverage/
 !.env.example
 *.log
 .DS_Store
+next-env.d.ts
+*.tsbuildinfo

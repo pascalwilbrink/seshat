@@ -1,0 +1,14 @@
+# Development database: Postgres with the pgvector extension.
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: seshat
+      POSTGRES_PASSWORD: seshat
+      POSTGRES_DB: seshat
+    ports:
+      - '5432:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+volumes:
+  pgdata:
