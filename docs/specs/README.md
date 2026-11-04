@@ -13,3 +13,4 @@ Approved specs recorded by Gilde. Each file is the byte-exact body of one approv
 | seshat-search-retrieval | Seshat: hybrid search and context retrieval across Files and Memories without leaks | 1 | [seshat-search-retrieval.md](seshat-search-retrieval.md) |
 | seshat-files-collections-tags | Seshat: Files on a local volume, optional Collections and scoped Tags | 1 | [seshat-files-collections-tags.md](seshat-files-collections-tags.md) |
 | seshat-memories | Seshat: typed Memories with provenance, tags, embeddings and supersession | 1 | [seshat-memories.md](seshat-memories.md) |
+| seshat-docker-packaging | Seshat: one Docker image running the API, MCP and web UI | 1 | [seshat-docker-packaging.md](seshat-docker-packaging.md) |
