@@ -1,5 +1,6 @@
-import { Home } from '@/components/home';
+import { redirect } from 'next/navigation';
+import { GLOBAL_OVERVIEW_PATH } from '@/lib/scope';
 
 export default function Page() {
-  return <Home />;
+  redirect(GLOBAL_OVERVIEW_PATH);
 }
