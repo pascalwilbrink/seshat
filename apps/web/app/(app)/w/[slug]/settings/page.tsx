@@ -1,5 +1,6 @@
-import { SettingsPlaceholder } from '@/components/settings-placeholder';
+import { WorkspaceSettingsView } from '@/components/workspace-settings-view';
 
-export default function Page() {
-  return <SettingsPlaceholder title="Workspace Settings" />;
+export default async function Page({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params;
+  return <WorkspaceSettingsView slug={decodeURIComponent(slug)} />;
 }

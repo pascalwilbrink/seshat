@@ -36,3 +36,16 @@ h1 { font-size: 1.5rem; margin: 0 0 1rem; }
   .shell { grid-template-columns: 1fr; }
   .shell-side { border-right: 0; border-bottom: 1px solid var(--border); }
 }
+h2 { font-size: 1.125rem; margin: 1.5rem 0 0.5rem; }
+.form { display: flex; flex-direction: column; gap: 0.75rem; max-width: 32rem; }
+.field { display: flex; flex-direction: column; gap: 0.25rem; }
+.field-hint { margin: 0; font-size: 0.875rem; }
+.field-error { color: #f87171; margin: 0; }
+.field input, .field textarea { background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius); padding: 0.5rem; font: inherit; }
+.field input[aria-invalid='true'], .field textarea[aria-invalid='true'] { border-color: #f87171; }
+.field input[readonly] { color: var(--text-muted); }
+.form button[type='submit'] { background: var(--accent); color: var(--bg); border: 0; border-radius: var(--radius); padding: 0.5rem 1rem; font-weight: 600; cursor: pointer; }
+.form button[type='submit'].danger { background: #f87171; }
+.form button:disabled { opacity: 0.5; cursor: not-allowed; }
+.danger-zone { border: 1px solid #f87171; border-radius: var(--radius); padding: 1rem; }
+.ws-list li { padding: 0.25rem 0; }
