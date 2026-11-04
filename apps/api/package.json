@@ -20,6 +20,7 @@
     "@nestjs/event-emitter": "^12.0.1",
     "@nestjs/platform-express": "^12.3.2",
     "@nestjs/typeorm": "^12.0.2",
+    "@seshat/domain": "workspace:*",
     "argon2": "^0.45.2",
     "pg": "^8.23.1",
     "reflect-metadata": "^0.2.2",

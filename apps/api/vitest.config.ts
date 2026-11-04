@@ -1,9 +1,12 @@
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 import { TEST_ADMIN_ENV } from './test/fixtures/admin.ts';
 
 // Spec files are excluded from tsconfig.json, so enable legacy (TypeScript-style) decorators here.
 // No decorator metadata is emitted: always use explicit @Inject(token).
 const shared = {
+  // Tests run against the shared domain source, so they do not depend on a prior package build.
+  resolve: { alias: { '@seshat/domain': fileURLToPath(new URL('../../packages/domain/src/index.ts', import.meta.url)) } },
   oxc: { decorator: { legacy: true } },
   test: {
     // Safe test-only admin credentials so config loading works without a .env file.
