@@ -288,6 +288,40 @@ describeIntegration('API keys (real PostgreSQL)', () => {
     });
   });
 
+  describe('management lifecycle', () => {
+    it('lists, edits and revokes by Workspace and key id, and persists the results', async () => {
+      const a = await workspace('mgmt-a');
+      const b = await workspace('mgmt-b');
+      const k = await create(a);
+      await create(b);
+      expect((await store.list(a)).map((r) => r.id)).toEqual([k.record.id]);
+      expect(await store.update(b, k.record.id, { name: 'hijack' })).toBe('not_found');
+      expect(await store.revoke(b, k.record.id)).toBeNull();
+      const edited = await store.update(a, k.record.id, { name: 'new', permissions: ['memories:read'] });
+      expect(edited).toMatchObject({ name: 'new', permissions: ['memories:read'], revokedAt: null });
+      const first = await store.revoke(a, k.record.id);
+      const again = await store.revoke(a, k.record.id);
+      expect(first?.revokedAt).toBeInstanceOf(Date);
+      expect(again?.revokedAt?.getTime()).toBe(first?.revokedAt?.getTime());
+      expect(await store.update(a, k.record.id, { name: 'revived' })).toBe('revoked');
+      const [row] = await ds.query('SELECT name, revoked_at FROM api_keys WHERE id = $1', [k.record.id]);
+      expect(row.name).toBe('new');
+      expect(row.revoked_at).not.toBeNull();
+      expect((await store.findByKey(k.secret))?.revokedAt).not.toBeNull();
+    });
+
+    it('deleting a Workspace removes its active and revoked keys', async () => {
+      const w = await workspace('mgmt-del');
+      const active = await create(w);
+      const revoked = await create(w);
+      await store.revoke(w, revoked.record.id);
+      await ds.getRepository(Workspace).delete({ id: w });
+      expect(await count()).toBe(0);
+      expect(await store.findByKey(active.secret)).toBeNull();
+      expect(await store.findByKey(revoked.secret)).toBeNull();
+    });
+  });
+
   describe('error logging', () => {
     it('a failing insert leaks no digest, key or pepper into logs or the thrown error', async () => {
       const lines: string[] = [];
