@@ -24,7 +24,16 @@ export interface AppConfig {
    * trusts no forwarding header, so the socket address is used.
    */
   trustProxy: false | number;
+  /**
+   * Directory holding original uploaded files. Optional here so that tools which only need the database (migration CLI)
+   * can load the config; the API itself refuses to start without it (see storage/). Never logged.
+   */
+  fileStorageDir: string | undefined;
+  /** Largest accepted upload in bytes (positive integer). Default: 50 MB. */
+  maxUploadBytes: number;
 }
+
+export const DEFAULT_MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 
 export const MIN_SESSION_SECRET_LENGTH = 32;
 export const MIN_API_KEY_PEPPER_LENGTH = 32;
@@ -173,6 +182,27 @@ export function loadConfig(env: EnvSource): AppConfig {
     }
   }
 
+  let fileStorageDir: string | undefined;
+  const rawStorageDir = get('FILE_STORAGE_DIR');
+  if (rawStorageDir !== undefined) {
+    if (rawStorageDir.includes('\0')) {
+      problems.push({ variable: 'FILE_STORAGE_DIR', reason: 'must be a valid directory path' });
+    } else {
+      fileStorageDir = rawStorageDir;
+    }
+  }
+
+  let maxUploadBytes = DEFAULT_MAX_UPLOAD_BYTES;
+  const rawMaxUpload = get('MAX_UPLOAD_BYTES');
+  if (rawMaxUpload !== undefined) {
+    const bytes = /^[1-9]\d{0,15}$/.test(rawMaxUpload) ? Number(rawMaxUpload) : NaN;
+    if (Number.isSafeInteger(bytes)) {
+      maxUploadBytes = bytes;
+    } else {
+      problems.push({ variable: 'MAX_UPLOAD_BYTES', reason: 'must be a positive integer number of bytes' });
+    }
+  }
+
   if (problems.length > 0) throw new ConfigError(problems);
   return {
     nodeEnv,
@@ -184,5 +214,7 @@ export function loadConfig(env: EnvSource): AppConfig {
     sessionSecret,
     apiKeyPepper,
     trustProxy,
+    fileStorageDir,
+    maxUploadBytes,
   };
 }

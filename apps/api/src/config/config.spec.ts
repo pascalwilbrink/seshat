@@ -27,6 +27,8 @@ describe('loadConfig', () => {
       sessionSecret: TEST_SESSION_SECRET,
       apiKeyPepper: TEST_API_KEY_PEPPER,
       trustProxy: false,
+      fileStorageDir: undefined,
+      maxUploadBytes: 52428800,
     });
   });
 
@@ -127,6 +129,19 @@ describe('loadConfig', () => {
     const message = problemsOf({ PORT: 'x', NODE_ENV: 'x', DB_MIGRATE_ON_START: 'x' });
     for (const name of ['DATABASE_URL', 'PORT', 'NODE_ENV', 'DB_MIGRATE_ON_START', 'ADMIN_USERNAME']) {
       expect(message).toContain(name);
+    }
+  });
+
+  it('reads FILE_STORAGE_DIR without requiring it (migration CLI)', () => {
+    expect(loadConfig(VALID).fileStorageDir).toBeUndefined();
+    expect(loadConfig({ ...VALID, FILE_STORAGE_DIR: '/var/seshat/files' }).fileStorageDir).toBe('/var/seshat/files');
+  });
+
+  it('validates MAX_UPLOAD_BYTES as a positive integer without echoing it', () => {
+    expect(loadConfig({ ...VALID, MAX_UPLOAD_BYTES: '1024' }).maxUploadBytes).toBe(1024);
+    for (const bad of ['0', '-1', '1.5', '10MB', '0x10', `1${SENTINEL}`, '9'.repeat(30)]) {
+      const message = problemsOf({ ...VALID, MAX_UPLOAD_BYTES: bad });
+      expect(message).toBe('Invalid configuration: MAX_UPLOAD_BYTES (must be a positive integer number of bytes)');
     }
   });
 });

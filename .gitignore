@@ -11,3 +11,4 @@ coverage/
 next-env.d.ts
 *.tsbuildinfo
 .next-smoke/
+apps/api/data/
