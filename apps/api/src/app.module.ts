@@ -11,11 +11,12 @@ import { HealthController } from './health.controller.js';
 import { HealthService } from './health.service.js';
 import { ScopesModule } from './scopes/scopes.module.js';
 import { StorageModule } from './storage/storage.module.js';
+import { TagsModule } from './tags/tags.module.js';
 import { WorkspacesModule } from './workspaces/workspaces.module.js';
 
 @Module({
   // EventEmitterModule.forRoot() is global: feature modules just inject EventEmitter2 / use @OnEvent.
-  imports: [ConfigModule, DatabaseModule, EventEmitterModule.forRoot(), AuthModule, WorkspacesModule, ApiKeysModule, ScopesModule, StorageModule, CollectionsModule],
+  imports: [ConfigModule, DatabaseModule, EventEmitterModule.forRoot(), AuthModule, WorkspacesModule, ApiKeysModule, ScopesModule, StorageModule, CollectionsModule, TagsModule],
   controllers: [HealthController],
   providers: [HealthService, { provide: APP_FILTER, useClass: SanitizedExceptionFilter }],
 })
