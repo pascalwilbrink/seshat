@@ -13,6 +13,10 @@ const shared = {
 
 export default defineConfig({
   test: {
+    // CI sets INTEGRATION_RESULTS_FILE so scripts/verify-integration-results.mjs can prove the suites ran.
+    ...(process.env.INTEGRATION_RESULTS_FILE
+      ? { reporters: ['default', 'json'], outputFile: { json: process.env.INTEGRATION_RESULTS_FILE } }
+      : {}),
     globalSetup: ['./test/global-setup.ts'],
     projects: [
       {
