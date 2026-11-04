@@ -377,12 +377,13 @@ Agents update this section when something lands. Everything under "Planned" is n
 - `apps/web` (`@seshat/web`): Next.js App Router with a single minimal page on port 3000.
 - `docker-compose.yml` with a `db` service (`pgvector/pgvector:pg17`) for development; the scaffold does not connect to it yet.
 - `.gilde.json`, `CLAUDE.md` (`@AGENTS.md`) and the skills sync workflow `.github/workflows/sync-skills.yaml`.
+- CI (`.github/workflows/ci.yml`): frozen install, build and tests on PRs and pushes to `main` with a pgvector service; `REQUIRE_INTEGRATION_TESTS=true` makes a missing `TEST_DATABASE_URL` fail instead of skip.
 
 ### Planned (not implemented)
 
 - Persistence (TypeORM, migrations), the Global/Workspace domain, Files, Collections, Memories, Tags and API keys.
 - Ingestion (`FileIngestor`, `FileIngestorProvider`, plain-text `txt`/`md` first), search and indexing.
-- The MCP server, CI workflows beyond skills sync, and a Dockerfile (target: one app container plus one database).
+- The MCP server, a release/deploy pipeline, and a Dockerfile (target: one app container plus one database).
 
 ### Foundation decisions
 

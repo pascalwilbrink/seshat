@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      db:
+        image: pgvector/pgvector:pg17
+        env:
+          # Throwaway credentials for a service container that only lives for this job.
+          POSTGRES_USER: seshat
+          POSTGRES_PASSWORD: seshat
+          POSTGRES_DB: seshat_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U seshat -d seshat_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      # No version input: pnpm/action-setup reads it from "packageManager" in the root package.json.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm build
+
+      - run: pnpm test
+        env:
+          TEST_DATABASE_URL: postgres://seshat:seshat@localhost:5432/seshat_test
+          # Fail instead of silently skipping the database integration suites.
+          REQUIRE_INTEGRATION_TESTS: 'true'
