@@ -5,3 +5,4 @@ Approved specs recorded by Gilde. Each file is the byte-exact body of one approv
 | Slug | Title | Version | File |
 | --- | --- | --- | --- |
 | seshat-guidance-update | Seshat: adopt the knowledge-and-memory guidance in AGENTS.md, README and a decision record | 1 | [seshat-guidance-update.md](seshat-guidance-update.md) |
+| seshat-scopes-workspaces-admin | Seshat: Global and Workspace scopes, Workspaces and admin login | 1 | [seshat-scopes-workspaces-admin.md](seshat-scopes-workspaces-admin.md) |
