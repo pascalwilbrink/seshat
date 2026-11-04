@@ -43,8 +43,10 @@ Present:
   pages for Global and each Workspace.
 - Gilde wiring: `.gilde.json`, `CLAUDE.md` and the skills sync workflow.
 
-Planned (does not exist yet): Files, Collections, Memories, Tags, API keys, ingestion, search, the MCP server, CI
-beyond skills sync, and a Dockerfile. The target is one application container plus one Postgres database. There is
+Also present: CI (build and tests with required integration tests, see [CI](#ci)).
+
+Planned (does not exist yet): Files, Collections, Memories, Tags, API keys, ingestion, search, the MCP server, a
+release/deploy pipeline, and a Dockerfile. The target is one application container plus one Postgres database. There is
 no single Docker image today.
 
 ## Run and develop
@@ -96,6 +98,51 @@ pnpm dev       # API on :4200 and web on :3000
 
 Invalid configuration stops startup with a message that names the variable but never prints its value.
 `apps/web` reads one server-side variable, `API_URL` (default `http://localhost:4200`, never `NEXT_PUBLIC_`).
+
+### Database and migrations
+- `docker compose up -d db` starts the development database (`pgvector/pgvector:pg17`, local-only credentials
+  `seshat`/`seshat`, database `seshat` on `localhost:5432`). It matches the `DATABASE_URL` in `apps/api/.env.example`.
+- Env loading: the API and every migration script read `apps/api/.env` themselves (located relative to the code, so the
+  working directory does not matter). Variables already set in the shell win over the file; empty values count as unset.
+- `synchronize` is always off. The schema only changes through migrations in `apps/api/src/migrations/`, and the API and
+  the TypeORM CLI share one data source (`apps/api/src/database/data-source.ts`).
+- Migrations at startup: `DB_MIGRATE_ON_START` defaults to `true` in development (so `pnpm dev` migrates for you) and to
+  `false` otherwise. Outside development, run migrations explicitly (below) before starting the API.
+- The first migration runs `CREATE EXTENSION IF NOT EXISTS vector`, so the database role needs permission to create
+  extensions (a superuser, or a trusted-extension grant). The dev compose user has it.
+- Migration commands, run from the repo root (paths are relative to `apps/api`):
+
+  ```sh
+  pnpm --filter @seshat/api migration:run        # apply pending migrations; running it again is a no-op
+  pnpm --filter @seshat/api migration:revert     # undo the most recent migration
+  pnpm --filter @seshat/api migration:generate src/migrations/AddThing   # diff entities against the database
+  pnpm --filter @seshat/api migration:create src/migrations/AddThing     # empty, timestamped migration
+  ```
+
+  Name migrations in PascalCase after what they do (`AddMemoryTable`); the timestamp prefix is added for you. Commit the
+  generated file, and do not edit migrations that already landed.
+- `GET /api/health` is public and returns `200 {"status":"ok","db":"ok"}`, or `503 {"status":"error","db":"unreachable"}`
+  when the database cannot be reached. It never includes connection details.
+
+### Integration tests
+- `pnpm test` needs no database. Without `TEST_DATABASE_URL` the database suites are skipped and a visible warning
+  (`[integration] ... SKIPPED`) is printed; suite names end in `[skipped: TEST_DATABASE_URL is not set]`.
+- To run them, create a dedicated, disposable database and point `TEST_DATABASE_URL` at it:
+
+  ```sh
+  docker compose up -d db
+  docker compose exec db createdb -U seshat seshat_test
+  TEST_DATABASE_URL=postgres://seshat:seshat@localhost:5432/seshat_test pnpm test
+  ```
+
+  (Local-only example credentials.) The name must contain `test` and differ from `DATABASE_URL`, otherwise the suites
+  refuse to run. This is required because the migration tests drop and recreate the database-scoped `vector` extension
+  to prove rollback, so never use a database that holds real data. `DATABASE_URL` alone never enables them.
+- Each test works in its own uniquely named schema, which is dropped (with its connections) in teardown, also after a
+  failure. The suites run serially for the shared extension.
+- CI always runs them: `REQUIRE_INTEGRATION_TESTS=true` turns a missing `TEST_DATABASE_URL` into a failure, and
+  `apps/api/scripts/verify-integration-results.mjs` checks that the integration suites actually executed. Do not set
+  `REQUIRE_INTEGRATION_TESTS` locally unless you want that failure.
 
 ### Sessions and the proxy
 - The browser only talks to the web origin. Next rewrites `/api/*` to `API_URL`, so the browser never calls the API
