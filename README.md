@@ -5,11 +5,12 @@ knowledge, extract and index their content, keep persistent memories, retrieve r
 search, and expose controlled access through an API and MCP.
 
 > **Status: early foundation.** Present: Postgres persistence, Workspace management, single-admin login and a
-> login-protected web shell with scoped Overview, Settings and API Keys pages, and Workspace API keys with explicit
-> permissions. Files, Collections, Memories, Tags, ingestion, search and MCP are planned. See [Status](#status).
+> login-protected web shell with scoped Overview, Settings and API Keys pages, Workspace API keys with explicit
+> permissions, and Files on a local volume with optional Collections and flat Tags (Global and Workspace, API and web).
+> Ingestion, Memories, search and MCP are planned. See [Status](#status).
 
 ## Core concepts
-Global and Workspaces exist today; the other concepts below are planned.
+Global, Workspaces, Files, Collections, Tags and Workspace API keys exist today; Memories, ingestion, search and MCP below are planned.
 
 - **Global** is a special scope for knowledge shared across the account. It is not a Workspace. Global
   resources are never available to a Workspace automatically: access must be granted explicitly.
@@ -43,11 +44,15 @@ Present:
   pages for Global and each Workspace.
 - Workspace API keys: admin management (create, list, edit, revoke), bearer authentication and a shared permission
   and action catalog (see [Workspace API keys](#workspace-api-keys)).
+- Files stored on a local volume (`FILE_STORAGE_DIR`), optional Collections and flat scoped Tags, in Global and
+  Workspaces: API, web pages, isolation tests and persisted post-commit cleanup of deleted originals (see
+  [Files, Collections and Tags](#files-collections-and-tags)). Files are stored, listed, edited, downloaded and deleted;
+  they are not ingested yet.
 - Gilde wiring: `.gilde.json`, `CLAUDE.md` and the skills sync workflow.
 
 Also present: CI (build and tests with required integration tests, see [CI](#ci)).
 
-Planned (does not exist yet): Files, Collections, Memories, Tags, ingestion, search, the MCP server, a
+Planned (does not exist yet): Memories, ingestion and file status transitions, text extraction, search, the MCP server, other storage backends, a
 release/deploy pipeline, and a Dockerfile. The target is one application container plus one Postgres database. There is
 no single Docker image today.
 
@@ -81,8 +86,11 @@ pnpm dev       # API on :4200 and web on :3000
 
    Paste the printed hash into `ADMIN_PASSWORD_HASH`. Keep it exactly as printed (it contains `$`): the API reads
    `apps/api/.env` itself and does not expand variables.
-4. Generate the session secret and put it in `SESSION_SECRET`: `openssl rand -base64 48`.
-5. Run `pnpm dev` (migrations run at startup in development) and open <http://localhost:3000>. Log in with
+4. Generate the session secret and put it in `SESSION_SECRET`: `openssl rand -base64 48`. Do the same for
+   `API_KEY_PEPPER` (a different value).
+5. Create the file storage directory that `FILE_STORAGE_DIR` points at (default `./data/files`, relative to `apps/api`):
+   `mkdir -p apps/api/data/files`.
+6. Run `pnpm dev` (migrations run at startup in development) and open <http://localhost:3000>. Log in with
    `ADMIN_USERNAME` and the password you chose.
 
 ### Configuration (`apps/api`)
@@ -92,6 +100,9 @@ pnpm dev       # API on :4200 and web on :3000
 | `ADMIN_USERNAME` | yes | The single admin's username (at most 128 characters). There is no user table. |
 | `ADMIN_PASSWORD_HASH` | yes | argon2id hash from `admin:hash-password`. |
 | `SESSION_SECRET` | yes | At least 32 characters; signs session cookies. Rotating it ends all sessions. |
+| `API_KEY_PEPPER` | yes | At least 32 characters; secret key of the HMAC under which API keys are stored. Changing it invalidates all keys. |
+| `FILE_STORAGE_DIR` | yes (API) | Existing, writable directory on a persistent local volume for original files. See [Files, Collections and Tags](#files-collections-and-tags). |
+| `MAX_UPLOAD_BYTES` | no | Largest accepted upload in bytes, positive integer, default `52428800` (50 MB). Larger uploads get `413`. |
 | `TRUST_PROXY` | no | `false` (default) or the number of trusted reverse-proxy hops (1-99), used for the client IP. |
 | `PORT` | no | 1-65535, default 4200. |
 | `NODE_ENV` | no | `development` (default), `test` or `production`. |
@@ -163,7 +174,7 @@ Invalid configuration stops startup with a message that names the variable but n
 - **Global is a scope, not a Workspace.** Every scoped resource is Global or in exactly one Workspace.
 - API routes carry the scope explicitly: `/api/global/...` and `/api/workspaces/:workspaceId/...` (a UUID). There is
   no implicit "current Workspace". The web app mirrors this: `/global/overview`, `/global/settings`,
-  `/w/<slug>/overview` and `/w/<slug>/settings`; the URL is the source of truth for the active scope.
+  `/w/<slug>/overview`, `/w/<slug>/settings`, plus files, collections and api-keys pages; the URL is the source of truth for the active scope.
 - `ScopeRef` (`apps/api/src/scopes/scope-ref.ts`) is `{ kind: 'global' } | { kind: 'workspace', workspaceId }`. Path
   parameters are parsed into it (`WorkspaceScopePipe`; a non-UUID is a 400) and services receive it as an argument.
 - Reusable scope storage: an entity extends `ScopedEntity` (`apps/api/src/scopes/scoped.entity.ts`) and gets `scope`
@@ -189,8 +200,9 @@ All require the admin session (`401` otherwise). Requests are strict JSON object
 | `GET /api/global/overview`, `GET /api/workspaces/:workspaceId/overview` | | `200` scope summary |
 
 Slugs are lowercase kebab-case (`a-z`, `0-9`, single hyphens, at most 100 characters), unique (`409` on a duplicate)
-and fixed after creation. `global` is reserved and refused. Names are 1-100 characters. Deleting a Workspace that
-still has data is a `409` (restricting foreign key). A successful delete emits the in-process event
+and fixed after creation. `global` is reserved and refused. Names are 1-100 characters. Deleting a Workspace removes its
+Files, Collections, Tags and stored originals (see [Deleting files and Workspaces](#deleting-files-and-workspaces));
+other data that still references it makes the delete a `409` (restricting foreign key). A successful delete emits the in-process event
 `workspace.deleted` (`{ id }`) after the transaction commits, for cleanup listeners.
 
 ### Tests a new endpoint must satisfy
@@ -216,6 +228,141 @@ docker compose up -d db
 docker compose exec db createdb -U seshat seshat_test
 TEST_DATABASE_URL=postgres://seshat:seshat@localhost:5432/seshat_test REQUIRE_INTEGRATION_TESTS=true pnpm test
 ```
+
+## Files, Collections and Tags
+Original files can be stored in Global or in one Workspace, optionally organized in Collections and labelled with Tags.
+Ingestion, text extraction, chunking, embeddings, Search, Memories and MCP are **not** implemented: a file is stored,
+listed, edited, downloaded and deleted, nothing more. Every file has an `ingestionStatus`; today it is always `pending`
+(its initial value) and nothing moves it on. The `pending`, `processing`, `indexed` and `failed` values and the Tag
+tables exist so that ingestion and Memories can build on them later. The only storage backend is a local volume.
+
+### Setup and deployment
+1. **Provision the volume.** Create a directory on a persistent volume and point `FILE_STORAGE_DIR` at it. The
+   directory must already exist and be readable, writable and traversable by the user that runs the API; the API never
+   creates the root itself (it only creates a private `.tmp/` directory inside it) and refuses to start with a message that
+   names `FILE_STORAGE_DIR` but not the path when it is missing or not writable. The default in `.env.example` is
+   `./data/files`, relative to the API's working directory; `mkdir -p apps/api/data/files` before the first `pnpm dev`.
+   Use an absolute path in production. `data/` is for local development only; do not commit it.
+2. **Persistence and backups.** The volume holds the only copy of every original, and the database holds the metadata
+   (name, size, SHA-256, owner, tags) that points at it. Back both up together and restore them together. Keep the volume
+   readable by the API user only (for example mode `0700`). Placing it on the same filesystem as its `.tmp/` is automatic,
+   which is what makes writes atomic; do not mount a separate volume at `.tmp`.
+3. **Configuration.** `FILE_STORAGE_DIR` is required by the API (migration commands do not need it). `MAX_UPLOAD_BYTES`
+   is optional, a positive integer number of bytes, default `52428800` (50 MB). Both are in `apps/api/.env.example`, the only
+   env file of the API. If a reverse proxy sits in front, allow request bodies at least that large.
+4. **Migrations.** Two new migrations: `CreateFilesCollectionsTags` (`collections`, `tags`, `files`, `file_tags`) and
+   `CreateStorageCleanupIntents` (`storage_cleanup_intents`). Run `pnpm --filter @seshat/api migration:run` before
+   starting the API outside development (in development `DB_MIGRATE_ON_START` does it).
+5. Startup validation: besides the existing checks, the API fails fast when `FILE_STORAGE_DIR` is missing, not a directory or
+   not writable, or when `MAX_UPLOAD_BYTES` is not a positive integer.
+
+Storage details (`apps/api/src/storage/`): originals are written under generated keys, `originals/global/<fileId>` or
+`originals/workspaces/<workspaceId>/<fileId>`, built only from the scope and a UUID. A client file name never
+becomes part of a path. Every key is validated, resolved below the canonical root and rejected when it would leave the root
+or pass through a symbolic link. A write goes to a temporary file in `.tmp/` and is renamed into place, so readers never see
+a partial object. The `FileStorage` interface (`put`, `get`, `delete`) is the only way the rest of the API touches the
+volume.
+
+### Routes
+All routes require the admin session or a Workspace API key, and carry the scope explicitly: `/api/global/...` or
+`/api/workspaces/:workspaceId/...`. Updates are `PUT` with all editable fields; there is no `PATCH`.
+
+| Method and path (after the scope prefix) | Notes |
+| --- | --- |
+| `POST /files` | `multipart/form-data`, see below. `201` with the file's metadata. |
+| `GET /files` | Query `limit` (1-100, default 25), `cursor`, `collectionId`, `tag`, `status`, `name` (substring). Returns `{ items, nextCursor, hasMore }`, newest first. Unknown or repeated query parameters and malformed cursors are `400`. |
+| `GET /files/:fileId` | Metadata. |
+| `GET /files/:fileId/download` | The original, always as an attachment. |
+| `PUT /files/:fileId` | `{ name, collectionId, tags }`, all three required; `collectionId: null` clears the Collection; `tags` replaces the tag set. Anything else (size, hash, scope, status) is a `400`. |
+| `DELETE /files/:fileId` | `204`. |
+| `GET/POST /collections`, `GET/PUT/DELETE /collections/:collectionId` | `{ name, description? }` to create, `{ name, description }` to update (`description: null` clears it). Names are 1-100 characters and unique per scope (`409` otherwise). |
+| `GET /tags`, `PUT /tags/:tagId`, `DELETE /tags/:tagId` | `PUT` body `{ name }`. There is no create route: Tags come into being when a name is assigned to a file. |
+
+The metadata (`FileDto`) holds `id`, `scope`, `workspaceId`, `name`, `extension`, `mimeType`, `sizeBytes`, `sha256`,
+`collectionId`, `tags` (names), `ingestionStatus`, `createdAt` and `updatedAt`. It never includes the storage key or any
+path. A Collection has `fileCount`, a Tag has `fileCount` (files in its own scope).
+
+**Upload contract.** Fields: exactly one `file` part, optional `collectionId` (a Collection of the same scope), and
+repeated `tags` fields (one name each; the number of fields is bounded and extras are a `400`). Example, with placeholders:
+
+```sh
+curl -X POST "$SESHAT_URL/api/workspaces/$WORKSPACE_ID/files" \
+  -H "Authorization: Bearer $SESHAT_API_KEY" \
+  -F "file=@notes.md" -F "collectionId=$COLLECTION_ID" -F "tags=meeting" -F "tags=2026"
+```
+
+The body is streamed straight to storage and hashed on the way; it is never buffered or parsed by a body parser. The
+permission is checked before the first byte is read. The limit is counted on the bytes actually received, not on
+`Content-Length`: an upload above `MAX_UPLOAD_BYTES` gets `413` and leaves **no row and no stored object**. Any other
+failure (bad multipart body, unknown Collection, scope removed meanwhile) also removes the partial object. The client
+file name is sanitized (path parts, control characters and over-long names removed); the extension, a sanitized MIME type,
+exact size and SHA-256 are recorded. The row, Collection membership and tag assignments commit in one transaction, and
+`file.uploaded` is emitted only after the commit.
+
+**Downloads** are always `Content-Disposition: attachment` with a safe, encoded file name, `X-Content-Type-Options:
+nosniff`, `Content-Security-Policy: default-src 'none'; sandbox` and `Cache-Control: private, no-store`. An unknown or
+risky MIME type is served as `application/octet-stream`. Files are never rendered inline, in the API or in the web app.
+
+### Permissions, Global and concealment
+| Operation | Permission |
+| --- | --- |
+| List, get, download files | `files:read` |
+| Upload, edit files | `files:write` |
+| Delete files | `files:delete` |
+| List, get Collections | `collections:read` |
+| Create, edit, delete Collections | `collections:write` |
+| List Tags | `files:read` **or** `memories:read` |
+| Rename, delete Tags | `files:write` **or** `memories:write` |
+
+A key needs the permission in its own Workspace. **Global is a dual grant**: a key reads Global files, Collections and
+Tags only with `global:read` **and** the matching read permission, and can never write or delete in Global; only the admin
+session does. Anything a caller may not see behaves exactly like a missing resource: another Workspace, a Global resource
+without the grant, an id from a different scope and an unknown id all give the same `404` body (compared byte for byte in
+the isolation tests). A missing permission inside a visible scope is a `403` naming only the permission. All checks run in
+`AuthorizationService.assertCan` before any query.
+
+### Collections and Tags
+- Collections are optional and never security boundaries; they grant nothing. A file can belong to at most one Collection of
+  its own scope; a Collection of another scope is rejected, and the database enforces it too. Deleting a Collection keeps
+  its files (they simply lose the Collection).
+- Tags are flat, scoped to Global or one Workspace, and shared by every resource of that scope that uses them. Names are
+  trimmed and lowercased (letters, digits, `-`, `_`, `.`, `:`, `/`; at most 50 characters), unique per scope, created
+  automatically in the file's scope when assigned, renamed with `PUT` (a name that already exists is a `409`) and deleted
+  everywhere at once with `DELETE` (the file stays, only the assignment disappears). The `tags` table knows nothing about
+  files; `file_tags` is the join, so Memories can later share the same Tags through their own join table.
+
+### Deleting files and Workspaces
+- `DELETE /files/:fileId` removes the row and its tag assignments and, **in the same transaction**, records a cleanup intent
+  (a row in `storage_cleanup_intents`) for the stored original. After the commit it emits `file.deleted` and a listener tries to
+  remove the object right away. A missing object counts as success.
+- If removal fails (volume unavailable, permission error), the response is still `204`: the file is gone from the API and the
+  intent stays in the database. It is retried with exponential backoff (5 s doubling to a maximum of one hour) by an
+  in-process timer, and every pending intent is retried at API startup, so a crash or restart loses nothing. Claims use a
+  60-second lease and `FOR UPDATE SKIP LOCKED`, so concurrent attempts do not clash. The ledger is a table, not a queue
+  library (pg-boss is not used yet).
+- Diagnosing leftovers: the API logs failures as `Could not remove stored original for <fileId> (intent <intentId>, attempt
+  <n>, <ErrorName>)`, never keys, paths or contents. Pending work is visible in the database:
+  `SELECT id, resource_id, attempts, last_error, next_attempt_at FROM storage_cleanup_intents ORDER BY created_at;` An
+  empty table means every deleted original is gone. Fix the cause (mount, permissions); the next retry removes the object.
+- Deleting a Workspace removes its files, tag assignments, Collections and Tags and records an intent per original in the
+  same transaction as the deletion, then drains them after commit with the same retry behavior. Files data therefore no
+  longer blocks Workspace deletion. The `409 Workspace still has data` still applies to any other resource that references
+  the Workspace without a cleanup (the restricting foreign key stays).
+
+### Web app
+Files and Collections are in the navigation for Global (`/global/files`, `/global/collections`) and each Workspace
+(`/w/<slug>/files`, `/w/<slug>/collections`).
+- **Files:** drag-and-drop or choose files; each file is its own request, sent one after another, with a real progress
+  bar per file, a Collection chosen up front and tags typed as comma-separated names. Leaving the page or switching scope aborts the running upload and starts no further ones;
+  a failed one shows its reason (for example "larger than the upload limit" on `413`) and can be retried. Filters
+  (name, Collection, Tag, status) apply from the first page, "Load more" follows the cursor, and "Clear filters" resets.
+  Selecting a file opens a panel to rename it, set or clear the Collection, replace the tags and download it. Delete asks for
+  confirmation. Names, tags and types are rendered as text; originals are never previewed.
+- **Collections:** list with file counts, create, rename and edit the description, and delete with a confirmation that says
+  the files are kept.
+- Every list shows a loading state, an empty state ("No files yet" or "No files match these filters"), a retryable error
+  state, and an expired-session message that points to login. Tags are managed through file edits in the UI; renaming or
+  deleting a Tag is available through the API only.
 
 ## Workspace API keys
 A Workspace API key is a credential owned by exactly one Workspace, for agents and applications. It is managed by the
@@ -305,7 +452,7 @@ Rules enforced by `AuthorizationService.assertCan`:
   is the separate toggle "Allow reading Global `global:read`".
 - A key can never write, delete or manage anything in Global, never manage Workspaces, and never manage keys.
 
-### Extending the policy (for the future Files, Memories, Search and MCP work)
+### Extending the policy (Files, Collections and Tags are done; for Memories, Search and MCP)
 - Add each new operation to `ACTION_CATALOG` in `packages/domain/src/actions.ts` with an explicit classification
   (`read`, `write`, `delete`, `admin` or `self`) and, for the first three, its permission. There is no wildcard: an action
   not in the catalog is denied. Entries marked "future" there have no endpoint yet.

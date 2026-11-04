@@ -199,7 +199,7 @@ describeIntegration('Files, Collections and Tags: endpoint-wide scope isolation 
       case 'file.update':
         return { json: valid ? { name: 'renamed.txt', collectionId: null, tags: [] } : { bogus: 1 } };
       case 'collection.create':
-        return { json: valid ? { name: uniq('created') } : { bogus: 1 } };
+        return { json: valid ? { name: uniq('created'), description: null } : { bogus: 1 } };
       case 'collection.update':
         return { json: valid ? { name: uniq('renamed'), description: null } : { bogus: 1 } };
       case 'tag.rename':
@@ -467,7 +467,7 @@ describeIntegration('Files, Collections and Tags: endpoint-wide scope isolation 
       const first = await upload(bad[0]!);
       expect(first.status).toBe(400);
       for (const id of bad) expect(fresh(await upload(id))).toEqual(fresh(first));
-      const upd = (id: string) => raw('PUT', `/api/workspaces/${wsA}/files/${a.fileId}`, k, { json: { name: 'moved.txt', collectionId: id, tags: [] } });
+      const upd = (id: string) => raw('PUT', `/api/workspaces/${wsA}/files/${a.fileId}`, k, { json: { collectionId: id, name: 'moved.txt', tags: [] } });
       const firstUpd = await upd(bad[0]!);
       expect(firstUpd.status).toBe(400);
       for (const id of bad) expect(fresh(await upd(id))).toEqual(fresh(firstUpd));
@@ -479,8 +479,8 @@ describeIntegration('Files, Collections and Tags: endpoint-wide scope isolation 
       expect(after.intents).toEqual([]);
       expect(events.filter((e) => e === 'file.uploaded')).toEqual([]);
       // The same for the Global file: a Workspace Collection is "other scope" there.
-      const gk = await raw('PUT', `/api/global/files/${g.fileId}`, { admin: true }, { json: { name: 'moved.txt', collectionId: a.collectionId, tags: [] } });
-      const gm = await raw('PUT', `/api/global/files/${g.fileId}`, { admin: true }, { json: { name: 'moved.txt', collectionId: randomUUID(), tags: [] } });
+      const gk = await raw('PUT', `/api/global/files/${g.fileId}`, { admin: true }, { json: { collectionId: a.collectionId, name: 'g.txt', tags: [] } });
+      const gm = await raw('PUT', `/api/global/files/${g.fileId}`, { admin: true }, { json: { collectionId: randomUUID(), name: 'g.txt', tags: [] } });
       expect(gk.status).toBe(400);
       expect(fresh(gk)).toEqual(fresh(gm));
     });
