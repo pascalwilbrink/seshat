@@ -37,8 +37,8 @@ export function assertDisposableDatabase(url: string, otherUrl = process.env.DAT
 export interface IsolatedSchema {
   /** Unique schema name, created for this test only. */
   schema: string;
-  /** A DataSource with the app's real options (same migrations), scoped to the schema. Not yet initialized. */
-  createDataSource(): DataSource;
+  /** A DataSource with the app's real options (same migrations), scoped to the schema; entities are passed explicitly. Not yet initialized. */
+  createDataSource(entities?: Function[]): DataSource;
   /** Runs SQL on a separate plain connection. */
   query(sql: string): Promise<Record<string, unknown>[]>;
   /** Destroys every DataSource created here, drops the schema and closes connections. Safe to call twice. */
@@ -65,9 +65,12 @@ export async function createIsolatedSchema(url = TEST_DATABASE_URL): Promise<Iso
   }
   return {
     schema,
-    createDataSource() {
+    createDataSource(entities = []) {
       const ds = new DataSource({
         ...createDataSourceOptions({ databaseUrl: url }),
+        // Decorated entity files cannot be imported by the file glob under Vitest (no TS transform in a native
+        // import()), so tests pass entity classes explicitly (default: none; migrations need no entities).
+        entities,
         schema,
         extra: { options: `-c search_path="${schema}"` },
       } as ConstructorParameters<typeof DataSource>[0]);
