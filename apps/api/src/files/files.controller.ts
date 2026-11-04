@@ -69,6 +69,8 @@ export class FilesController {
     @Param('fileId') fileId: string,
   ): Promise<void> {
     return this.files.remove(principal, scope, fileId);
+  }
+
   @Get('global/files')
   listGlobal(@CurrentPrincipal() principal: Principal, @Query() query: unknown): Promise<FileListPage<FileDto>> {
     return this.files.list(principal, globalScope(), query);
