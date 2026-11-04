@@ -41,7 +41,7 @@ h2 { font-size: 1.125rem; margin: 1.5rem 0 0.5rem; }
 .field { display: flex; flex-direction: column; gap: 0.25rem; }
 .field-hint { margin: 0; font-size: 0.875rem; }
 .field-error { color: #f87171; margin: 0; }
-.field input, .field textarea { background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius); padding: 0.5rem; font: inherit; }
+.field input, .field textarea, .field select { background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius); padding: 0.5rem; font: inherit; }
 .field input[aria-invalid='true'], .field textarea[aria-invalid='true'] { border-color: #f87171; }
 .field input[readonly] { color: var(--text-muted); }
 .form button[type='submit'] { background: var(--accent); color: var(--bg); border: 0; border-radius: var(--radius); padding: 0.5rem 1rem; font-weight: 600; cursor: pointer; }
@@ -62,3 +62,10 @@ h2 { font-size: 1.125rem; margin: 1.5rem 0 0.5rem; }
 .warning { color: #fbbf24; margin: 0; }
 .dialog { position: fixed; inset: 0; margin: auto; width: min(28rem, 90vw); height: fit-content; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.25rem; z-index: 20; }
 .dialog .danger { background: #f87171; color: var(--bg); border: 0; border-radius: var(--radius); padding: 0.5rem 1rem; font-weight: 600; cursor: pointer; }
+.dropzone { border: 1px dashed var(--border); border-radius: var(--radius); padding: 1rem; margin: 0.75rem 0; text-align: center; }
+.dropzone-active { border-color: var(--accent); }
+.upload-list { list-style: none; padding: 0; }
+.upload-list li { padding: 0.25rem 0; }
+.filters { max-width: none; flex-direction: row; flex-wrap: wrap; align-items: flex-end; }
+.file-detail { border: 1px solid var(--border); border-radius: var(--radius); padding: 1rem; margin: 1rem 0; }
+.mono { font-family: ui-monospace, monospace; word-break: break-all; }
