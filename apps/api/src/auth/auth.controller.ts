@@ -14,17 +14,13 @@ import {
 import { globalScope } from '../scopes/scope-ref.js';
 import { AuthService } from './auth.service.js';
 import { AuthorizationService } from './authorization.service.js';
+import { IdentityService, type AdminSessionDto, type SessionDto } from './identity.service.js';
 import { type CookieOptions, CurrentPrincipal, type HttpRequest, type HttpResponse } from './http.js';
 import { LoginRateLimiter } from './login-rate-limiter.js';
 import { MAX_PASSWORD_LENGTH } from './password-hash.js';
 import type { Principal } from './principal.js';
 import { SESSION_COOKIE_NAME, SESSION_TTL_SECONDS } from './session-token.js';
 import { MAX_ADMIN_USERNAME_LENGTH } from '../config/app-config.js';
-
-export interface SessionDto {
-  kind: 'admin';
-  username: string;
-}
 
 function parseLogin(body: unknown): { username: string; password: string } {
   if (typeof body !== 'object' || body === null || Array.isArray(body)) throw new BadRequestException('Invalid request');
@@ -49,6 +45,7 @@ export class AuthController {
     @Inject(AuthService) private readonly auth: AuthService,
     @Inject(AuthorizationService) private readonly authorization: AuthorizationService,
     @Inject(LoginRateLimiter) private readonly limiter: LoginRateLimiter,
+    @Inject(IdentityService) private readonly identity: IdentityService,
   ) {}
 
   private cookieOptions(): CookieOptions {
@@ -62,7 +59,7 @@ export class AuthController {
     @Req() req: HttpRequest,
     @Res({ passthrough: true }) res: HttpResponse,
     @Body() body: unknown,
-  ): Promise<SessionDto> {
+  ): Promise<AdminSessionDto> {
     const retryAfter = this.limiter.hit(req.ip ?? 'unknown');
     if (retryAfter > 0) {
       res.setHeader('Retry-After', String(retryAfter));
@@ -87,8 +84,9 @@ export class AuthController {
   }
 
   @Get('me')
-  me(@CurrentPrincipal() principal: Principal): SessionDto {
+  me(@CurrentPrincipal() principal: Principal, @Res({ passthrough: true }) res: HttpResponse): Promise<SessionDto> {
     this.authorization.assertCan(principal, 'session:read', globalScope());
-    return { kind: 'admin', username: this.auth.adminUsername };
+    res.setHeader('Cache-Control', 'no-store');
+    return this.identity.describe(principal);
   }
 }

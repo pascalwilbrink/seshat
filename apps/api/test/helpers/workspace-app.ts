@@ -7,6 +7,7 @@ import { EventEmitter2, EventEmitterModule } from '@nestjs/event-emitter';
 import { getDataSourceToken, getRepositoryToken } from '@nestjs/typeorm';
 import { vi } from 'vitest';
 import { createApp } from '../../src/app.setup.js';
+import { ApiKeyStore } from '../../src/api-keys/api-key.store.js';
 import { AuthService } from '../../src/auth/auth.service.js';
 import { type Action, AuthorizationService } from '../../src/auth/authorization.service.js';
 import { CLOCK, systemClock } from '../../src/auth/login-rate-limiter.js';
@@ -59,6 +60,8 @@ export async function bootWorkspaceApp(opts: {
   repo: unknown;
   dataSource: unknown;
   authorization?: AuthorizationService;
+  /** Stand-in for the API key store the guard authenticates bearer keys with. */
+  apiKeys?: Pick<ApiKeyStore, 'findByKey' | 'touchLastUsed'>;
 }): Promise<WorkspaceApp> {
   for (const [k, v] of Object.entries({ DATABASE_URL: 'postgres://u:p@localhost:5432/db', ...TEST_ADMIN_ENV, NODE_ENV: 'test' })) {
     vi.stubEnv(k, v);
@@ -72,6 +75,7 @@ export async function bootWorkspaceApp(opts: {
       SessionGuard,
       { provide: APP_GUARD, useExisting: SessionGuard },
       { provide: APP_FILTER, useClass: SanitizedExceptionFilter },
+      { provide: ApiKeyStore, useValue: opts.apiKeys ?? { findByKey: async () => null, touchLastUsed: async () => false } },
       { provide: AuthorizationService, useValue: opts.authorization ?? new AuthorizationService() },
       { provide: getRepositoryToken(Workspace), useValue: opts.repo },
       { provide: getDataSourceToken(), useValue: opts.dataSource },
