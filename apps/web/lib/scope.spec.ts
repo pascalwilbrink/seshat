@@ -17,5 +17,11 @@ describe('scope from URL', () => {
     expect(sectionFromPathname('/global/overview')).toBe('overview');
     expect(scopeHref({ kind: 'global' }, 'settings')).toBe('/global/settings');
     expect(scopeHref({ kind: 'workspace', slug: 'a-b' }, 'overview')).toBe('/w/a-b/overview');
+    expect(sectionFromPathname('/w/a/api-keys')).toBe('api-keys');
+    expect(scopeHref({ kind: 'workspace', slug: 'a' }, 'api-keys')).toBe('/w/a/api-keys');
+  });
+  it('has no Global API keys section or link', () => {
+    expect(sectionFromPathname('/global/api-keys')).toBe('overview');
+    expect(scopeHref({ kind: 'global' }, 'api-keys')).toBe('/global/overview');
   });
 });

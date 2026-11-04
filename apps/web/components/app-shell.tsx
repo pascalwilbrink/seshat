@@ -4,12 +4,13 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState, type ReactNode } from 'react';
 import { apiFetch } from '@/lib/api-client';
-import { scopeFromPathname, scopeHref, sectionFromPathname, type Scope, type Section } from '@/lib/scope';
+import { WORKSPACE_ONLY_SECTIONS, scopeFromPathname, scopeHref, sectionFromPathname, type Scope, type Section } from '@/lib/scope';
 import { ScopeSwitcher } from './scope-switcher';
 import { WorkspacesProvider } from './workspaces-provider';
 
 const SECTIONS: { section: Section; label: string }[] = [
   { section: 'overview', label: 'Overview' },
+  { section: 'api-keys', label: 'API Keys' },
   { section: 'settings', label: 'Settings' },
 ];
 
@@ -41,7 +42,7 @@ export function AppShell({ username, children }: { username: string; children: R
           <ScopeSwitcher active={active} section={section} />
           <nav aria-label="Sections">
             <ul>
-              {SECTIONS.map((s) => (
+              {SECTIONS.filter((s) => navScope.kind === 'workspace' || !WORKSPACE_ONLY_SECTIONS.includes(s.section)).map((s) => (
                 <li key={s.section}>
                   <Link
                     href={scopeHref(navScope, s.section)}

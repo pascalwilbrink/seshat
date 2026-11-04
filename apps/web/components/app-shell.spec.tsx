@@ -49,13 +49,30 @@ describe('scope switcher', () => {
     expect(beta).toHaveAttribute('href', '/w/beta/settings');
     expect(within(nav).getByRole('link', { name: 'Global' })).toHaveAttribute('href', '/global/settings');
   });
-  it('shows only Overview and Settings, scoped to the URL', async () => {
+  it('shows API Keys only in a Workspace, never in Global', async () => {
+    withWorkspaces();
+    pathname = '/global/overview';
+    const { unmount } = render(<AppShell username="admin">x</AppShell>);
+    await screen.findByRole('link', { name: 'Alpha' });
+    expect(within(screen.getByRole('navigation', { name: 'Sections' })).queryByRole('link', { name: 'API Keys' })).not.toBeInTheDocument();
+    expect(document.querySelector('a[href*="api-keys"][href^="/global"]')).toBeNull();
+    unmount();
+    pathname = '/w/alpha/api-keys';
+    render(<AppShell username="admin">x</AppShell>);
+    const link = await within(screen.getByRole('navigation', { name: 'Sections' })).findByRole('link', { name: 'API Keys' });
+    expect(link).toHaveAttribute('href', '/w/alpha/api-keys');
+    expect(link).toHaveAttribute('aria-current', 'page');
+    // Switching scope from the API Keys page never links to a Global key page.
+    expect(within(screen.getByRole('navigation', { name: 'Scope' })).getByRole('link', { name: 'Global' })).toHaveAttribute('href', '/global/overview');
+  });
+  it('shows Overview, API Keys and Settings in a Workspace, scoped to the URL', async () => {
     withWorkspaces();
     pathname = '/w/alpha/overview';
     render(<AppShell username="admin">x</AppShell>);
     const sections = screen.getByRole('navigation', { name: 'Sections' });
     expect(within(sections).getAllByRole('link').map((l) => [l.textContent, l.getAttribute('href')])).toEqual([
       ['Overview', '/w/alpha/overview'],
+      ['API Keys', '/w/alpha/api-keys'],
       ['Settings', '/w/alpha/settings'],
     ]);
     await screen.findByRole('link', { name: 'Alpha' });
