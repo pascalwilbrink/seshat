@@ -2,6 +2,8 @@ import { Global, Module } from '@nestjs/common';
 import { APP_CONFIG, type AppConfig } from '../config/app-config.js';
 import { FILE_STORAGE } from './file-storage.js';
 import { LocalVolumeFileStorage } from './local-volume-file-storage.js';
+import { WORKSPACE_CLEANUP } from '../workspaces/workspace-cleanup.js';
+import { WorkspaceDataCleanup } from './workspace-data-cleanup.js';
 import { StorageCleanupListener } from './storage-cleanup.listener.js';
 import { StorageCleanupService } from './storage-cleanup.service.js';
 
@@ -16,7 +18,9 @@ import { StorageCleanupService } from './storage-cleanup.service.js';
     },
     StorageCleanupService,
     StorageCleanupListener,
+    WorkspaceDataCleanup,
+    { provide: WORKSPACE_CLEANUP, useExisting: WorkspaceDataCleanup },
   ],
-  exports: [FILE_STORAGE, StorageCleanupService],
+  exports: [FILE_STORAGE, StorageCleanupService, WORKSPACE_CLEANUP],
 })
 export class StorageModule {}

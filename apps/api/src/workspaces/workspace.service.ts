@@ -5,6 +5,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { getDataSourceToken, getRepositoryToken } from '@nestjs/typeorm';
@@ -19,6 +20,7 @@ import {
   type WorkspaceDto,
 } from './workspace.dto.js';
 import { RESERVED_WORKSPACE_SLUG, WORKSPACE_SLUG_PATTERN, Workspace } from './workspace.entity.js';
+import { WORKSPACE_CLEANUP, type WorkspaceCleanup } from './workspace-cleanup.js';
 import { toWorkspaceDto } from './workspace.mapper.js';
 
 export const WORKSPACE_DELETED_EVENT = 'workspace.deleted';
@@ -68,6 +70,7 @@ export class WorkspacesService {
     @Inject(getDataSourceToken()) private readonly dataSource: TransactionRunner,
     @Inject(AuthorizationService) private readonly authorization: AuthorizationService,
     @Inject(EventEmitter2) private readonly events: EventEmitter2,
+    @Optional() @Inject(WORKSPACE_CLEANUP) private readonly dataCleanup?: WorkspaceCleanup,
   ) {}
 
   async list(principal: Principal, scope: ScopeRef): Promise<WorkspaceDto[]> {
@@ -118,6 +121,12 @@ export class WorkspacesService {
     let affected: number | null | undefined;
     try {
       affected = await this.dataSource.transaction(async (manager: EntityManager) => {
+        if (this.dataCleanup) {
+          // Serializes against in-flight inserts (they hold FOR KEY SHARE); later inserts fail the FK and compensate.
+          const locked = (await manager.query(`SELECT 1 FROM "workspaces" WHERE "id" = $1 FOR UPDATE`, [workspace.id])) as unknown[];
+          if (locked.length === 0) return 0;
+          await this.dataCleanup.deleteWorkspaceData(manager, workspace.id);
+        }
         const result = await manager.delete(Workspace, { id: workspace.id });
         return result.affected;
       });
