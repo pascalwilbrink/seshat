@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { NestFactory } from '@nestjs/core';
+import { createApp } from './app.setup.js';
 import { AppModule } from './app.module.js';
 import { DatabaseBootstrapError } from './database/bootstrap.js';
 import { getAppConfig, loadConfigOrExit } from './config/index.js';
@@ -9,8 +9,7 @@ async function bootstrap() {
     error: (message) => console.error(message),
     exit: (code) => process.exit(code),
   });
-  const app = await NestFactory.create(AppModule);
-  app.setGlobalPrefix('api');
+  const app = await createApp(AppModule, config);
   await app.listen(config.port);
 }
 

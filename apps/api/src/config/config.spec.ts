@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import { TEST_ADMIN_ENV, TEST_ADMIN_PASSWORD_HASH, TEST_ADMIN_USERNAME, TEST_SESSION_SECRET } from '../../test/fixtures/admin.js';
 import { ConfigError, loadConfig } from './app-config.js';
 
 const SENTINEL = 'sentinel-secret-9f3a';
-const VALID = { DATABASE_URL: 'postgres://user:pw@localhost:5432/db' };
+const VALID = { DATABASE_URL: 'postgres://user:pw@localhost:5432/db', ...TEST_ADMIN_ENV };
 
 function problemsOf(env: Record<string, string | undefined>): string {
   try {
@@ -21,6 +22,10 @@ describe('loadConfig', () => {
       port: 4200,
       databaseUrl: VALID.DATABASE_URL,
       dbMigrateOnStart: true,
+      adminUsername: TEST_ADMIN_USERNAME,
+      adminPasswordHash: TEST_ADMIN_PASSWORD_HASH,
+      sessionSecret: TEST_SESSION_SECRET,
+      trustProxy: false,
     });
   });
 
@@ -41,7 +46,44 @@ describe('loadConfig', () => {
   });
 
   it('names a missing DATABASE_URL', () => {
-    expect(problemsOf({})).toBe('Invalid configuration: DATABASE_URL (is required)');
+    expect(problemsOf({ ...TEST_ADMIN_ENV })).toBe('Invalid configuration: DATABASE_URL (is required)');
+  });
+
+  it('names every missing admin variable without values', () => {
+    const message = problemsOf({ DATABASE_URL: VALID.DATABASE_URL });
+    expect(message).toBe(
+      'Invalid configuration: ADMIN_USERNAME (is required), ADMIN_PASSWORD_HASH (is required), SESSION_SECRET (is required)',
+    );
+  });
+
+  it.each([
+    ['plain text', `hunter2-${SENTINEL}`],
+    ['argon2i', '$argon2i$v=19$m=65536,t=3,p=4$c29tZXNhbHQ$aGFzaGhhc2g'],
+    ['bcrypt', '$2b$12$abcdefghijklmnopqrstuuABCDEFGHIJKLMNOPQRSTUVWXYZ01234'],
+    ['truncated', '$argon2id$v=19$m=65536,t=3,p=4$'],
+  ])('rejects an ADMIN_PASSWORD_HASH that is %s without echoing it', (_name, bad) => {
+    const message = problemsOf({ ...VALID, ADMIN_PASSWORD_HASH: bad });
+    expect(message).toBe('Invalid configuration: ADMIN_PASSWORD_HASH (must be an argon2id hash)');
+  });
+
+  it('rejects a short SESSION_SECRET without echoing it', () => {
+    const short = 'x'.repeat(31);
+    const message = problemsOf({ ...VALID, SESSION_SECRET: short });
+    expect(message).toBe('Invalid configuration: SESSION_SECRET (must be at least 32 characters)');
+    expect(message).not.toContain(short);
+    expect(loadConfig({ ...VALID, SESSION_SECRET: 'x'.repeat(32) }).sessionSecret).toHaveLength(32);
+  });
+
+  it('rejects an overlong ADMIN_USERNAME', () => {
+    expect(problemsOf({ ...VALID, ADMIN_USERNAME: 'u'.repeat(129) })).toContain('ADMIN_USERNAME');
+  });
+
+  it('parses TRUST_PROXY as false or a hop count', () => {
+    expect(loadConfig({ ...VALID, TRUST_PROXY: 'false' }).trustProxy).toBe(false);
+    expect(loadConfig({ ...VALID, TRUST_PROXY: '1' }).trustProxy).toBe(1);
+    for (const bad of ['true', '0', '-1', '1.5', '10.0.0.1', 'loopback']) {
+      expect(problemsOf({ ...VALID, TRUST_PROXY: bad })).toContain('TRUST_PROXY');
+    }
   });
 
   it.each([
@@ -50,7 +92,7 @@ describe('loadConfig', () => {
     `postgres://u:${SENTINEL}@/db`,
     `http://u:${SENTINEL}@localhost/db`,
   ])('rejects malformed DATABASE_URL without echoing it', (bad) => {
-    const message = problemsOf({ DATABASE_URL: bad });
+    const message = problemsOf({ ...TEST_ADMIN_ENV, DATABASE_URL: bad });
     expect(message).toContain('DATABASE_URL');
     expect(message).not.toContain(SENTINEL);
     expect(message).not.toContain('localhost');
@@ -72,7 +114,7 @@ describe('loadConfig', () => {
 
   it('reports every offending variable at once', () => {
     const message = problemsOf({ PORT: 'x', NODE_ENV: 'x', DB_MIGRATE_ON_START: 'x' });
-    for (const name of ['DATABASE_URL', 'PORT', 'NODE_ENV', 'DB_MIGRATE_ON_START']) {
+    for (const name of ['DATABASE_URL', 'PORT', 'NODE_ENV', 'DB_MIGRATE_ON_START', 'ADMIN_USERNAME']) {
       expect(message).toContain(name);
     }
   });

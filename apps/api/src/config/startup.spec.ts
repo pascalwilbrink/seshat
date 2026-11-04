@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { TEST_ADMIN_ENV } from '../../test/fixtures/admin.js';
 import { loadConfig } from './app-config.js';
 import { loadConfigOrExit } from './startup.js';
 
@@ -25,13 +26,13 @@ function run(env: Record<string, string | undefined>) {
 
 describe('loadConfigOrExit', () => {
   it('exits with one sanitized line when DATABASE_URL is missing', () => {
-    const { output, exits } = run({});
+    const { output, exits } = run({ ...TEST_ADMIN_ENV });
     expect(exits).toEqual([1]);
     expect(output).toEqual(['Invalid configuration: DATABASE_URL (is required)']);
   });
 
   it('never prints a malformed DATABASE_URL, its credentials or raw errors', () => {
-    const { output, exits } = run({ DATABASE_URL: `mysql://admin:${SENTINEL}@db.internal:3306/x` });
+    const { output, exits } = run({ ...TEST_ADMIN_ENV, DATABASE_URL: `mysql://admin:${SENTINEL}@db.internal:3306/x` });
     expect(exits).toEqual([1]);
     expect(output).toHaveLength(1);
     expect(output[0]).toContain('DATABASE_URL');
@@ -57,7 +58,7 @@ describe('loadConfigOrExit', () => {
   });
 
   it('returns the config and does not exit when valid', () => {
-    const { exits, result } = run({ DATABASE_URL: 'postgres://u:p@localhost/db' });
+    const { exits, result } = run({ ...TEST_ADMIN_ENV, DATABASE_URL: 'postgres://u:p@localhost/db' });
     expect(exits).toEqual([]);
     expect(result).toMatchObject({ port: 4200 });
   });

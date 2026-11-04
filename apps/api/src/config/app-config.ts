@@ -11,6 +11,27 @@ export interface AppConfig {
   databaseUrl: string;
   /** Run pending migrations at startup. Default: true in development, false otherwise. */
   dbMigrateOnStart: boolean;
+  /** Single admin username. Required. */
+  adminUsername: string;
+  /** Argon2id hash of the admin password (`pnpm --filter @seshat/api admin:hash-password`). Required; never logged. */
+  adminPasswordHash: string;
+  /** HMAC key signing session cookies, at least 32 characters. Required; never logged. */
+  sessionSecret: string;
+  /**
+   * How many reverse-proxy hops to trust for the client IP (X-Forwarded-For). `false` (default)
+   * trusts no forwarding header, so the socket address is used.
+   */
+  trustProxy: false | number;
+}
+
+export const MIN_SESSION_SECRET_LENGTH = 32;
+export const MAX_ADMIN_USERNAME_LENGTH = 128;
+
+const ARGON2ID_HASH_RE = /^\$argon2id\$v=\d+\$m=\d+,t=\d+,p=\d+\$[A-Za-z0-9+/]+\$[A-Za-z0-9+/]+$/;
+
+/** True for an encoded argon2id hash (shape only; the hash is never parsed further here). */
+export function isArgon2idHash(value: string): boolean {
+  return ARGON2ID_HASH_RE.test(value);
 }
 
 /** Injection token for AppConfig (explicit, since Vitest emits no decorator metadata). */
@@ -92,6 +113,59 @@ export function loadConfig(env: EnvSource): AppConfig {
     }
   }
 
+  let adminUsername = '';
+  const rawUsername = get('ADMIN_USERNAME');
+  if (rawUsername === undefined) {
+    problems.push({ variable: 'ADMIN_USERNAME', reason: 'is required' });
+  } else if (rawUsername.length > MAX_ADMIN_USERNAME_LENGTH) {
+    problems.push({ variable: 'ADMIN_USERNAME', reason: `must be at most ${MAX_ADMIN_USERNAME_LENGTH} characters` });
+  } else {
+    adminUsername = rawUsername;
+  }
+
+  let adminPasswordHash = '';
+  const rawHash = get('ADMIN_PASSWORD_HASH');
+  if (rawHash === undefined) {
+    problems.push({ variable: 'ADMIN_PASSWORD_HASH', reason: 'is required' });
+  } else if (!isArgon2idHash(rawHash)) {
+    problems.push({ variable: 'ADMIN_PASSWORD_HASH', reason: 'must be an argon2id hash' });
+  } else {
+    adminPasswordHash = rawHash;
+  }
+
+  let sessionSecret = '';
+  const rawSecret = get('SESSION_SECRET');
+  if (rawSecret === undefined) {
+    problems.push({ variable: 'SESSION_SECRET', reason: 'is required' });
+  } else if (rawSecret.length < MIN_SESSION_SECRET_LENGTH) {
+    problems.push({
+      variable: 'SESSION_SECRET',
+      reason: `must be at least ${MIN_SESSION_SECRET_LENGTH} characters`,
+    });
+  } else {
+    sessionSecret = rawSecret;
+  }
+
+  let trustProxy: false | number = false;
+  const rawTrust = get('TRUST_PROXY');
+  if (rawTrust !== undefined && rawTrust !== 'false') {
+    const hops = /^\d{1,2}$/.test(rawTrust) ? Number(rawTrust) : NaN;
+    if (Number.isInteger(hops) && hops >= 1) {
+      trustProxy = hops;
+    } else {
+      problems.push({ variable: 'TRUST_PROXY', reason: 'must be false or a number of proxy hops (1-99)' });
+    }
+  }
+
   if (problems.length > 0) throw new ConfigError(problems);
-  return { nodeEnv, port, databaseUrl, dbMigrateOnStart };
+  return {
+    nodeEnv,
+    port,
+    databaseUrl,
+    dbMigrateOnStart,
+    adminUsername,
+    adminPasswordHash,
+    sessionSecret,
+    trustProxy,
+  };
 }
