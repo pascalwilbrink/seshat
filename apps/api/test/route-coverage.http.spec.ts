@@ -25,21 +25,31 @@ const EXPECTED_PUBLIC = ['GET /api/health', 'POST /api/auth/login'];
 
 /** Every production route. Adding a route requires adding it here (and an authorization test for it). */
 const EXPECTED_ROUTES: string[] = [
+  'DELETE /api/global/collections/:collectionId',
   'DELETE /api/workspaces/:workspaceId',
+  'DELETE /api/workspaces/:workspaceId/collections/:collectionId',
   'GET /api/auth/me',
+  'GET /api/global/collections',
+  'GET /api/global/collections/:collectionId',
   'GET /api/global/overview',
   'GET /api/global/workspaces',
   'GET /api/health',
   'GET /api/workspaces/:workspaceId',
   'GET /api/workspaces/:workspaceId/api-keys',
+  'GET /api/workspaces/:workspaceId/collections',
+  'GET /api/workspaces/:workspaceId/collections/:collectionId',
   'GET /api/workspaces/:workspaceId/overview',
+  'PATCH /api/global/collections/:collectionId',
   'PATCH /api/workspaces/:workspaceId',
   'PATCH /api/workspaces/:workspaceId/api-keys/:keyId',
+  'PATCH /api/workspaces/:workspaceId/collections/:collectionId',
   'POST /api/auth/login',
   'POST /api/auth/logout',
+  'POST /api/global/collections',
   'POST /api/global/workspaces',
   'POST /api/workspaces/:workspaceId/api-keys',
   'POST /api/workspaces/:workspaceId/api-keys/:keyId/revoke',
+  'POST /api/workspaces/:workspaceId/collections',
 ];
 
 let app: INestApplication;
