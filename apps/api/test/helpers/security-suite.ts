@@ -173,8 +173,13 @@ export function defineSecuritySuite(name: string, makeWorld: () => Promise<World
         expect(body.message).toBe('Missing permission: files:delete');
         for (const needle of [own, w.own.slug, w.own.name, foreign, 'search']) expect(res.text).not.toContain(needle);
         // Dual Global grant: both missing grants are named, nothing else.
-        const g = await call('file.list', 'global', secret);
-        expect(JSON.parse(g.text).message).toBe('Missing permission: files:read, global:read');
+        const other = await w.createKey(own, ['files:write']);
+        const g = await call('search.query', 'global', other.secret);
+        expect(JSON.parse(g.text).message).toBe('Missing permission: search, global:read');
+        // Files, Collections and Tags conceal Global: no grant is the generic missing-resource 404.
+        const hidden = await call('file.list', 'global', secret);
+        expect(hidden.status).toBe(404);
+        expect(JSON.parse(hidden.text)).toEqual({ message: 'Not Found', error: 'Not Found', statusCode: 404 });
         // A Global mutation is a plain 403, whatever the key holds.
         const all = await w.createKey(own, [...PERMISSIONS]);
         for (const action of ACTIONS.filter((a) => ['write', 'delete', 'admin'].includes(EXPECTED[a]!.kind))) {

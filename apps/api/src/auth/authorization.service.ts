@@ -3,6 +3,7 @@ import {
   ACTIONS,
   GLOBAL_READ_PERMISSION,
   getActionRequirement,
+  type ActionRequirement,
   isAction,
   isPermission,
   type Action,
@@ -25,6 +26,29 @@ const ALLOW: Decision = { allow: true };
 const HIDDEN: Decision = { allow: false, reason: 'hidden' };
 const FORBIDDEN: Decision = { allow: false, reason: 'forbidden' };
 
+/** The operation permissions of a requirement (one, or any of several). Empty for admin and self actions. */
+function requiredPermissions(req: ActionRequirement): readonly Permission[] {
+  if ('permission' in req) return [req.permission];
+  if ('anyOf' in req) return req.anyOf;
+  return [];
+}
+
+/**
+ * The read permissions of an action's resource family (`file.*`, `collection.*`, `tag.*`). A key sees a concealed family
+ * in Global only with `global:read` plus one of these, so a Global mutation is a 403 for a key that can already read
+ * Global and the generic 404 for one that cannot.
+ */
+function familyReadPermissions(action: Action): readonly Permission[] {
+  const family = action.split('.')[0];
+  const found = new Set<Permission>();
+  for (const other of ACTIONS) {
+    const req = getActionRequirement(other);
+    if (!req || req.classification !== 'read' || other.split('.')[0] !== family) continue;
+    for (const p of requiredPermissions(req)) found.add(p);
+  }
+  return [...found];
+}
+
 function asApiKeyPrincipal(principal: unknown): ApiKeyPrincipal | null {
   const p = principal as Partial<ApiKeyPrincipal> | null | undefined;
   if (!p || p.kind !== 'apiKey') return null;
@@ -38,7 +62,8 @@ function asApiKeyPrincipal(principal: unknown): ApiKeyPrincipal | null {
  * It fails closed: unknown principal kinds, unknown actions and unrecognized scopes are denied.
  *
  * Denial never discloses Workspaces: a Workspace scope the principal may not use throws the same
- * NotFoundException a missing Workspace produces. Global scope denies with 403. Only inside a scope the
+ * NotFoundException a missing Workspace produces. Global scope denies with 403, except for resource families that conceal Global (files, Collections, Tags): there a
+ * key without the Global read grant gets the same 404 a missing resource produces. Only inside a scope the
  * principal may use, a missing permission is a 403 that names the permission needed and nothing else.
  */
 @Injectable()
@@ -86,16 +111,26 @@ export class AuthorizationService {
     if (scope.kind === 'workspace') {
       // Before any permission check: another Workspace is indistinguishable from a missing one.
       if (scope.workspaceId.toLowerCase() !== key.workspaceId.toLowerCase()) return HIDDEN;
-      if (!('permission' in req)) return FORBIDDEN;
-      return key.permissions.includes(req.permission) ? ALLOW : { allow: false, reason: 'forbidden', missing: [req.permission] };
+      const needed = requiredPermissions(req);
+      if (needed.length === 0) return FORBIDDEN;
+      return needed.some((p) => key.permissions.includes(p)) ? ALLOW : { allow: false, reason: 'forbidden', missing: needed };
     }
 
     // Global: identity lookups, and reads that hold both the operation permission and the global:read grant.
     if (req.classification === 'self') return ALLOW;
-    if (req.classification !== 'read' || !('permission' in req)) return FORBIDDEN;
+    const needed = requiredPermissions(req);
+    const holdsOperation = needed.some((p) => key.permissions.includes(p));
+    const holdsGrant = key.permissions.includes(GLOBAL_READ_PERMISSION);
+    if ('concealGlobal' in req && req.concealGlobal) {
+      // Resource families: Global without the grant is indistinguishable from a missing resource.
+      if (req.classification === 'read') return holdsOperation && holdsGrant ? ALLOW : HIDDEN;
+      const canSee = holdsGrant && familyReadPermissions(action).some((p) => key.permissions.includes(p));
+      return canSee ? FORBIDDEN : HIDDEN; // keys never mutate Global, even with every grant
+    }
+    if (req.classification !== 'read' || needed.length === 0) return FORBIDDEN;
     const missing: Permission[] = [];
-    if (!key.permissions.includes(req.permission)) missing.push(req.permission);
-    if (!key.permissions.includes(GLOBAL_READ_PERMISSION)) missing.push(GLOBAL_READ_PERMISSION);
+    if (!holdsOperation) missing.push(...needed);
+    if (!holdsGrant) missing.push(GLOBAL_READ_PERMISSION);
     return missing.length === 0 ? ALLOW : { allow: false, reason: 'forbidden', missing };
   }
 }

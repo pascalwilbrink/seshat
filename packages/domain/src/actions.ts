@@ -9,21 +9,45 @@ import type { OperationalPermission } from './permissions.js';
  */
 export type ActionClassification = 'read' | 'write' | 'delete' | 'admin' | 'self';
 
+/**
+ * - `permission`: the one operation permission an API key needs.
+ * - `anyOf`: a key needs at least one of these (shared Tags: `files:read` OR `memories:read`).
+ * - `concealGlobal`: a resource family whose Global scope is hidden. A key without the Global read grant
+ *   (`global:read` plus a read permission of the family) gets the generic missing-resource 404 in Global instead of 403.
+ */
 export type ActionRequirement =
-  | { readonly classification: 'read' | 'write' | 'delete'; readonly permission: OperationalPermission }
+  | {
+      readonly classification: 'read' | 'write' | 'delete';
+      readonly permission: OperationalPermission;
+      readonly concealGlobal?: true;
+    }
+  | {
+      readonly classification: 'read' | 'write' | 'delete';
+      readonly anyOf: readonly [OperationalPermission, ...OperationalPermission[]];
+      readonly concealGlobal?: true;
+    }
   | { readonly classification: 'admin' | 'self' };
 
 const perm = (
   classification: 'read' | 'write' | 'delete',
   permission: OperationalPermission,
 ): ActionRequirement => ({ classification, permission });
+/** A permission of a resource family whose Global scope is concealed (files, Collections, Tags). */
+const res = (
+  classification: 'read' | 'write' | 'delete',
+  permission: OperationalPermission,
+): ActionRequirement => ({ classification, permission, concealGlobal: true });
+const resAny = (
+  classification: 'read' | 'write' | 'delete',
+  ...anyOf: [OperationalPermission, ...OperationalPermission[]]
+): ActionRequirement => ({ classification, anyOf, concealGlobal: true });
 const ADMIN: ActionRequirement = { classification: 'admin' };
 const SELF: ActionRequirement = { classification: 'self' };
 
 /**
  * The action catalog: every operation that needs an access decision, with an explicit classification.
  * There is no wildcard: a new action must be added here with a deliberate entry, otherwise it is denied.
- * Entries marked "future" describe operations later specs implement; no endpoint exists for them yet.
+ * Entries marked "future" (or whose endpoints are still in flight) describe operations later jobs implement.
  * `global:read` is a grant (see GLOBAL_READ_PERMISSION in permissions.ts), never the permission of an action.
  */
 export const ACTION_CATALOG = {
@@ -41,15 +65,23 @@ export const ACTION_CATALOG = {
   'apiKey:create': ADMIN,
   'apiKey:update': ADMIN,
   'apiKey:revoke': ADMIN,
-  // Future: files.
-  'file.list': perm('read', 'files:read'),
-  'file.get': perm('read', 'files:read'),
-  'file.upload': perm('write', 'files:write'),
-  'file.delete': perm('delete', 'files:delete'),
-  // Future: collections.
-  'collection.list': perm('read', 'collections:read'),
-  'collection.create': perm('write', 'collections:write'),
-  'collection.update': perm('write', 'collections:write'),
+  // Files (concealGlobal: another scope or an ungranted Global is the generic missing-resource 404).
+  'file.list': res('read', 'files:read'),
+  'file.get': res('read', 'files:read'),
+  'file.download': res('read', 'files:read'),
+  'file.upload': res('write', 'files:write'),
+  'file.update': res('write', 'files:write'),
+  'file.delete': res('delete', 'files:delete'),
+  // Collections: never grant access to files.
+  'collection.list': res('read', 'collections:read'),
+  'collection.get': res('read', 'collections:read'),
+  'collection.create': res('write', 'collections:write'),
+  'collection.update': res('write', 'collections:write'),
+  'collection.delete': res('write', 'collections:write'),
+  // Tags are shared by Files and (later) Memories: either side's permission is enough.
+  'tag.list': resAny('read', 'files:read', 'memories:read'),
+  'tag.rename': resAny('write', 'files:write', 'memories:write'),
+  'tag.delete': resAny('write', 'files:write', 'memories:write'),
   // Future: memories.
   'memory.recall': perm('read', 'memories:read'),
   'memory.remember': perm('write', 'memories:write'),

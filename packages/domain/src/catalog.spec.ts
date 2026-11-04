@@ -47,21 +47,58 @@ describe('action catalog', () => {
       const req = getActionRequirement(action);
       expect(req, action).toBeDefined();
       expect(['read', 'write', 'delete', 'admin', 'self']).toContain(req!.classification);
-      if (req!.classification === 'admin' || req!.classification === 'self') expect('permission' in req!).toBe(false);
-      else expect(isPermission((req as { permission: unknown }).permission)).toBe(true);
+      if (req!.classification === 'admin' || req!.classification === 'self') expect('permission' in req! || 'anyOf' in req!).toBe(false);
+      else {
+        const r = req as { permission?: unknown; anyOf?: unknown[] };
+        for (const p of r.anyOf ?? [r.permission]) expect(isPermission(p), action).toBe(true);
+      }
     }
   });
 
   it('maps every operational permission to at least one action, and none to global:read', () => {
-    const used = new Set<string>(Object.values(ACTION_CATALOG).flatMap((r) => ('permission' in r ? [r.permission] : [])));
+    const used = new Set<string>(Object.values(ACTION_CATALOG).flatMap((r) => ('permission' in r ? [r.permission] : 'anyOf' in r ? [...r.anyOf] : [])));
     for (const p of OPERATIONAL_PERMISSIONS) expect(used.has(p), p).toBe(true);
     expect(used.has(GLOBAL_READ_PERMISSION)).toBe(false);
   });
 
   it('matches the naming of the spec examples and keeps search a read', () => {
-    expect(getActionRequirement('file.upload')).toEqual({ classification: 'write', permission: 'files:write' });
+    expect(getActionRequirement('file.upload')).toEqual({ classification: 'write', permission: 'files:write', concealGlobal: true });
     expect(getActionRequirement('memory.forget')).toEqual({ classification: 'delete', permission: 'memories:delete' });
     expect(getActionRequirement('search.query')).toEqual({ classification: 'read', permission: 'search' });
+  });
+
+  it('maps every planned Files operation to files:read, files:write or files:delete', () => {
+    const files = {
+      'file.list': 'files:read',
+      'file.get': 'files:read',
+      'file.download': 'files:read',
+      'file.upload': 'files:write',
+      'file.update': 'files:write',
+      'file.delete': 'files:delete',
+    } as const;
+    for (const [action, permission] of Object.entries(files)) {
+      expect(getActionRequirement(action), action).toMatchObject({ permission });
+    }
+    expect(ACTIONS.filter((a) => a.startsWith('file.')).sort()).toEqual(Object.keys(files).sort());
+  });
+
+  it('maps Collection operations to collections:read or collections:write', () => {
+    for (const a of ['collection.list', 'collection.get']) expect(getActionRequirement(a)).toMatchObject({ classification: 'read', permission: 'collections:read' });
+    for (const a of ['collection.create', 'collection.update', 'collection.delete']) expect(getActionRequirement(a)).toMatchObject({ classification: 'write', permission: 'collections:write' });
+  });
+
+  it('lets either side of the shared Tags use them: files OR memories', () => {
+    expect(getActionRequirement('tag.list')).toEqual({ classification: 'read', anyOf: ['files:read', 'memories:read'], concealGlobal: true });
+    for (const a of ['tag.rename', 'tag.delete']) {
+      expect(getActionRequirement(a)).toEqual({ classification: 'write', anyOf: ['files:write', 'memories:write'], concealGlobal: true });
+    }
+  });
+
+  it('conceals Global for every files, Collections and Tags action and for nothing else', () => {
+    for (const action of ACTIONS) {
+      const req = getActionRequirement(action) as { concealGlobal?: boolean };
+      expect(Boolean(req.concealGlobal), action).toBe(/^(file|collection|tag)\./.test(action));
+    }
   });
 
   it('keeps Workspace and key management admin-only', () => {

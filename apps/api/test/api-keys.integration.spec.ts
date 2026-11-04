@@ -58,12 +58,14 @@ describeIntegration('API keys (real PostgreSQL)', () => {
 
     it('down drops the table, up recreates it (reversible)', async () => {
       const names = ds.migrations.map((m) => m.constructor.name);
-      expect(names.at(-1)).toBe('CreateApiKeys1762500000000');
+      // Newer migrations (files, Collections, Tags) sit on top of it: revert them first.
+      expect(names.at(-2)).toBe('CreateApiKeys1762500000000');
+      await ds.undoLastMigration({ transaction: 'each' });
       await ds.undoLastMigration({ transaction: 'each' });
       expect(await ds.query(`SELECT to_regclass('"${iso.schema}".api_keys') AS t`)).toEqual([{ t: null }]);
       expect(await ds.query(`SELECT to_regclass('"${iso.schema}".workspaces') AS t`)).not.toEqual([{ t: null }]);
       const again = await ds.runMigrations({ transaction: 'each' });
-      expect(again.map((m) => m.name)).toEqual(['CreateApiKeys1762500000000']);
+      expect(again.map((m) => m.name)).toEqual(['CreateApiKeys1762500000000', 'CreateFilesCollectionsTags1762600000000']);
       expect(await ds.runMigrations({ transaction: 'each' })).toEqual([]);
     });
   });
