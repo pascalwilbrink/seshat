@@ -8,3 +8,4 @@ Approved specs recorded by Gilde. Each file is the byte-exact body of one approv
 | seshat-scopes-workspaces-admin | Seshat: Global and Workspace scopes, Workspaces and admin login | 1 | [seshat-scopes-workspaces-admin.md](seshat-scopes-workspaces-admin.md) |
 | seshat-persistence-foundation | Seshat: persistence and configuration foundation with CI | 1 | [seshat-persistence-foundation.md](seshat-persistence-foundation.md) |
 | seshat-api-keys-authorization | Seshat: Workspace API keys with explicit permissions and Global grants | 1 | [seshat-api-keys-authorization.md](seshat-api-keys-authorization.md) |
+| seshat-ingestion-pipeline | Seshat: ingestion pipeline with pluggable ingestors, chunking and OpenAI embeddings via the AI SDK | 1 | [seshat-ingestion-pipeline.md](seshat-ingestion-pipeline.md) |
