@@ -1,5 +1,13 @@
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 /** Vitest global setup: makes skipped integration tests visible in the run output. */
-export default function setup(): void {
+export default function setup(): () => void {
+  // AppModule needs a writable FILE_STORAGE_DIR; workers inherit this variable.
+  const storageDir = mkdtempSync(join(tmpdir(), 'seshat-test-files-'));
+  process.env.FILE_STORAGE_DIR = storageDir;
+
   if (!process.env.TEST_DATABASE_URL) {
     if (process.env.REQUIRE_INTEGRATION_TESTS === 'true') {
       const message =
@@ -16,4 +24,5 @@ export default function setup(): void {
   } else {
     console.warn('\n[integration] TEST_DATABASE_URL is set: running database integration tests.\n');
   }
+  return () => rmSync(storageDir, { recursive: true, force: true });
 }
