@@ -30,13 +30,16 @@ describeIntegration('migrations (real PostgreSQL)', () => {
 
   it('discovers the migrations exactly once', () => {
     const names = ds.migrations.map((m) => m.constructor.name);
-    expect(names).toEqual(['EnableVectorExtension1762300000000']);
+    expect(names).toEqual(['EnableVectorExtension1762300000000', 'CreateWorkspaces1762400000000']);
   });
 
-  it('up: enables vector; a second run applies nothing', async () => {
+  it('up: enables vector and creates workspaces; a second run applies nothing', async () => {
     expect(await vectorInstalled()).toBe(false);
     const first = await ds.runMigrations({ transaction: 'each' });
-    expect(first.map((m) => m.name)).toEqual(['EnableVectorExtension1762300000000']);
+    expect(first.map((m) => m.name)).toEqual([
+      'EnableVectorExtension1762300000000',
+      'CreateWorkspaces1762400000000',
+    ]);
     expect(await vectorInstalled()).toBe(true);
 
     const second = await ds.runMigrations({ transaction: 'each' });
@@ -44,19 +47,26 @@ describeIntegration('migrations (real PostgreSQL)', () => {
     expect(await vectorInstalled()).toBe(true);
   });
 
-  it('keeps the migrations table in the isolated schema and creates no domain tables', async () => {
+  it('keeps the migrations table in the isolated schema and creates only workspaces', async () => {
+    const tables = await iso.query(
+      `SELECT table_name FROM information_schema.tables WHERE table_schema = '${iso.schema}' ORDER BY table_name`,
+    );
+    expect(tables.map((t) => t.table_name)).toEqual(['migrations', 'workspaces']);
+  });
+
+  it('down drops workspaces, then the extension; re-up succeeds', async () => {
+    await ds.undoLastMigration({ transaction: 'each' });
     const tables = await iso.query(
       `SELECT table_name FROM information_schema.tables WHERE table_schema = '${iso.schema}'`,
     );
     expect(tables.map((t) => t.table_name)).toEqual(['migrations']);
-  });
+    expect(await vectorInstalled()).toBe(true);
 
-  it('down removes the extension and re-up succeeds', async () => {
     await ds.undoLastMigration({ transaction: 'each' });
     expect(await vectorInstalled()).toBe(false);
 
     const again = await ds.runMigrations({ transaction: 'each' });
-    expect(again).toHaveLength(1);
+    expect(again).toHaveLength(2);
     expect(await vectorInstalled()).toBe(true);
   });
 
