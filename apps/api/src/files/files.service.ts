@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
+import type { Readable } from 'node:stream';
 import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { getDataSourceToken } from '@nestjs/typeorm';
@@ -9,13 +10,18 @@ import type { Principal } from '../auth/principal.js';
 import { CollectionsService } from '../collections/collection.service.js';
 import { APP_CONFIG, type AppConfig } from '../config/app-config.js';
 import { type ScopeRef, isUuid, scopeColumns } from '../scopes/scope-ref.js';
-import { FILE_STORAGE, type FileStorage, originalObjectKey } from '../storage/file-storage.js';
+import { FILE_STORAGE, type FileStorage, StorageObjectNotFoundError, originalObjectKey } from '../storage/file-storage.js';
 import { StorageCleanupService } from '../storage/storage-cleanup.service.js';
 import { TagsService, scopeKeyOf } from '../tags/tags.service.js';
 import { type FileDto, type FileRow, type UpdateFileInput, toFileDto } from './file.dto.js';
 import { FILE_DELETED_EVENT, FILE_UPLOADED_EVENT, type FileUploadedEvent } from './file.events.js';
 import { extensionOf, sanitizeFileName, sanitizeMimeType } from './file-name.js';
+import { type FileListPage, encodeCursor, parseFileListQuery } from './file-list-query.js';
 import { receiveUpload } from './upload-reader.js';
+
+const FILE_COLUMNS_F = ['id', 'scope', 'workspace_id', 'name', 'extension', 'mime_type', 'size_bytes', 'sha256', 'collection_id', 'ingestion_status', 'created_at', 'updated_at']
+  .map((c) => `f."${c}"`)
+  .join(', ');
 
 function pgCode(err: unknown): string | undefined {
   return (err as { driverError?: { code?: string } } | null)?.driverError?.code;
@@ -145,6 +151,104 @@ export class FilesService {
       [id, scopeKeyOf(scope)],
     )) as { name: string }[];
     return rows.map((r) => r.name);
+  }
+
+  /**
+   * Newest first with a stable (created_at, id) order. The cursor carries the last row's microsecond timestamp text and
+   * id, so rows that share a timestamp are neither repeated nor skipped. Every predicate, join and subquery is bound to
+   * this scope's key: a Collection or tag from another scope simply matches nothing, like a missing one.
+   */
+  async list(principal: Principal, scope: ScopeRef, rawQuery: unknown): Promise<FileListPage<FileDto>> {
+    this.authorization.assertCan(principal, 'file.list', scope);
+    const q = parseFileListQuery(rawQuery);
+    await this.assertScopeExists(scope);
+
+    const scopeKey = scopeKeyOf(scope);
+    const params: unknown[] = [scopeKey];
+    const where = [`f."scope_key" = $1`];
+    const bind = (value: unknown) => `$${params.push(value)}`;
+    if (q.collectionId) where.push(`f."collection_id" = ${bind(q.collectionId)}::uuid`);
+    if (q.status) where.push(`f."ingestion_status" = ${bind(q.status)}`);
+    if (q.name) where.push(`position(lower(${bind(q.name)}::text) in lower(f."name")) > 0`);
+    if (q.tag) {
+      where.push(
+        `EXISTS (SELECT 1 FROM "file_tags" ft JOIN "tags" t ON t."id" = ft."tag_id" AND t."scope_key" = ft."scope_key"
+           WHERE ft."file_id" = f."id" AND ft."scope_key" = f."scope_key" AND t."name" = ${bind(q.tag)})`,
+      );
+    }
+    if (q.cursor) {
+      where.push(`(f."created_at", f."id") < (${bind(q.cursor.createdAt)}::timestamptz, ${bind(q.cursor.id)}::uuid)`);
+    }
+    const rows = (await this.dataSource.query(
+      `SELECT ${FILE_COLUMNS_F}, to_char(f."created_at" AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS "cursor_ts"
+       FROM "files" f WHERE ${where.join(' AND ')}
+       ORDER BY f."created_at" DESC, f."id" DESC LIMIT ${bind(q.limit + 1)}`,
+      params,
+    )) as (FileRow & { cursor_ts: string })[];
+
+    const hasMore = rows.length > q.limit;
+    const page = hasMore ? rows.slice(0, q.limit) : rows;
+    const tagsByFile = await this.tagNamesFor(scopeKey, page.map((r) => r.id));
+    const last = page[page.length - 1];
+    return {
+      items: page.map((r) => toFileDto(r, tagsByFile.get(r.id) ?? [])),
+      nextCursor: hasMore && last ? encodeCursor({ createdAt: last.cursor_ts, id: last.id }) : null,
+      hasMore,
+      limit: q.limit,
+    };
+  }
+
+  async get(principal: Principal, scope: ScopeRef, fileId: string): Promise<FileDto> {
+    this.authorization.assertCan(principal, 'file.get', scope);
+    const row = await this.findRow(scope, fileId);
+    const tags = await this.tagNamesFor(scopeKeyOf(scope), [row.id]);
+    return toFileDto(row, tags.get(row.id) ?? []);
+  }
+
+  /**
+   * Authorizes, finds the row inside the scope, then opens the original. The stream is opened before any response
+   * header is written, so a missing object is a plain 404 that names no key or path.
+   */
+  async openDownload(
+    principal: Principal,
+    scope: ScopeRef,
+    fileId: string,
+  ): Promise<{ stream: Readable; name: string; mimeType: string; sizeBytes: number }> {
+    this.authorization.assertCan(principal, 'file.download', scope);
+    const row = await this.findRow(scope, fileId, true);
+    let stream: Readable;
+    try {
+      stream = await this.storage.get(row.storage_key!);
+    } catch (err) {
+      if (!(err instanceof StorageObjectNotFoundError)) {
+        this.logger.error(`Could not open original for file ${row.id} (${err instanceof Error ? err.name : 'unknown'})`);
+      }
+      throw new NotFoundException('Not Found');
+    }
+    return { stream, name: row.name, mimeType: row.mime_type, sizeBytes: Number(row.size_bytes) };
+  }
+
+  private async findRow(scope: ScopeRef, fileId: string, withKey = false): Promise<FileRow & { storage_key?: string }> {
+    if (!isUuid(fileId)) throw new NotFoundException('Not Found');
+    await this.assertScopeExists(scope);
+    const rows = (await this.dataSource.query(
+      `SELECT ${FILE_COLUMNS_F}${withKey ? ', f."storage_key"' : ''} FROM "files" f WHERE f."id" = $1 AND f."scope_key" = $2`,
+      [fileId.toLowerCase(), scopeKeyOf(scope)],
+    )) as (FileRow & { storage_key?: string })[];
+    if (rows.length === 0) throw new NotFoundException('Not Found');
+    return rows[0]!;
+  }
+
+  private async tagNamesFor(scopeKey: string, fileIds: string[]): Promise<Map<string, string[]>> {
+    const out = new Map<string, string[]>();
+    if (fileIds.length === 0) return out;
+    const rows = (await this.dataSource.query(
+      `SELECT ft."file_id", t."name" FROM "file_tags" ft JOIN "tags" t ON t."id" = ft."tag_id" AND t."scope_key" = ft."scope_key"
+       WHERE ft."scope_key" = $1 AND ft."file_id" = ANY($2::uuid[]) ORDER BY t."name"`,
+      [scopeKey, fileIds],
+    )) as { file_id: string; name: string }[];
+    for (const r of rows) out.set(r.file_id, [...(out.get(r.file_id) ?? []), r.name]);
+    return out;
   }
 
   private async load(manager: EntityManager, scope: ScopeRef, id: string, tagNames: string[]): Promise<FileDto> {
