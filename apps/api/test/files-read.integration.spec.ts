@@ -29,6 +29,9 @@ import { FilesController } from '../src/files/files.controller.js';
 import { FilesService } from '../src/files/files.service.js';
 import { FILE_STORAGE, originalObjectKey } from '../src/storage/file-storage.js';
 import { LocalVolumeFileStorage } from '../src/storage/local-volume-file-storage.js';
+import { StorageCleanupIntent } from '../src/storage/storage-cleanup-intent.entity.js';
+import { StorageCleanupListener } from '../src/storage/storage-cleanup.listener.js';
+import { StorageCleanupService } from '../src/storage/storage-cleanup.service.js';
 import { FileTag } from '../src/tags/file-tag.entity.js';
 import { Tag } from '../src/tags/tag.entity.js';
 import { TagsService } from '../src/tags/tags.service.js';
@@ -125,7 +128,7 @@ describeIntegration('File list, metadata and download (real PostgreSQL and stora
     assertDisposableDatabase(TEST_DATABASE_URL!);
     iso = await createIsolatedSchema();
     await iso.query('DROP EXTENSION IF EXISTS vector');
-    ds = iso.createDataSource([Workspace, ApiKey, Collection, Tag, FileTag, FileRecord]);
+    ds = iso.createDataSource([Workspace, ApiKey, Collection, Tag, FileTag, FileRecord, StorageCleanupIntent]);
     await ds.initialize();
     await ds.runMigrations({ transaction: 'each' });
     wsA = await addWorkspace('alpha');
@@ -157,6 +160,8 @@ describeIntegration('File list, metadata and download (real PostgreSQL and stora
         { provide: FILE_STORAGE, useValue: storage },
         CollectionsService,
         TagsService,
+        StorageCleanupService,
+        StorageCleanupListener,
         FilesService,
       ],
     })
