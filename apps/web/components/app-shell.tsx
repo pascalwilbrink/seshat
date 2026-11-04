@@ -10,6 +10,7 @@ import { WorkspacesProvider } from './workspaces-provider';
 
 const SECTIONS: { section: Section; label: string }[] = [
   { section: 'overview', label: 'Overview' },
+  { section: 'collections', label: 'Collections' },
   { section: 'api-keys', label: 'API Keys' },
   { section: 'settings', label: 'Settings' },
 ];

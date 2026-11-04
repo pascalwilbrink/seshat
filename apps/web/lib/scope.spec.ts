@@ -20,6 +20,12 @@ describe('scope from URL', () => {
     expect(sectionFromPathname('/w/a/api-keys')).toBe('api-keys');
     expect(scopeHref({ kind: 'workspace', slug: 'a' }, 'api-keys')).toBe('/w/a/api-keys');
   });
+  it('supports Collections in both scopes', () => {
+    expect(sectionFromPathname('/global/collections')).toBe('collections');
+    expect(sectionFromPathname('/w/a/collections')).toBe('collections');
+    expect(scopeHref({ kind: 'global' }, 'collections')).toBe('/global/collections');
+    expect(scopeHref({ kind: 'workspace', slug: 'a' }, 'collections')).toBe('/w/a/collections');
+  });
   it('has no Global API keys section or link', () => {
     expect(sectionFromPathname('/global/api-keys')).toBe('overview');
     expect(scopeHref({ kind: 'global' }, 'api-keys')).toBe('/global/overview');
