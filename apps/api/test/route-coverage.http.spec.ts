@@ -23,6 +23,25 @@ interface Layer {
 /** Public method/path pairs. Hard-coded on purpose: this is the allowlist the spec fixes (AC-5). */
 const EXPECTED_PUBLIC = ['GET /api/health', 'POST /api/auth/login'];
 
+/** Every production route. Adding a route requires adding it here (and an authorization test for it). */
+const EXPECTED_ROUTES: string[] = [
+  'DELETE /api/workspaces/:workspaceId',
+  'GET /api/auth/me',
+  'GET /api/global/overview',
+  'GET /api/global/workspaces',
+  'GET /api/health',
+  'GET /api/workspaces/:workspaceId',
+  'GET /api/workspaces/:workspaceId/api-keys',
+  'GET /api/workspaces/:workspaceId/overview',
+  'PATCH /api/workspaces/:workspaceId',
+  'PATCH /api/workspaces/:workspaceId/api-keys/:keyId',
+  'POST /api/auth/login',
+  'POST /api/auth/logout',
+  'POST /api/global/workspaces',
+  'POST /api/workspaces/:workspaceId/api-keys',
+  'POST /api/workspaces/:workspaceId/api-keys/:keyId/revoke',
+];
+
 let app: INestApplication;
 let base: string;
 let routes: { method: string; path: string }[];
@@ -102,6 +121,21 @@ describe('default-deny route coverage', () => {
     }
   });
 
+  it('registers exactly the known production routes: no new route, public or not, appeared unnoticed', () => {
+    const production = routes.filter((r) => !r.path.startsWith('/api/future-feature')).map((r) => `${r.method} ${r.path}`);
+    expect(production).toEqual(EXPECTED_ROUTES);
+    // Key transport is create-only: every other key route is listed without a secret-bearing counterpart.
+    expect(production.filter((r) => r.includes('/api-keys'))).toEqual([
+      'GET /api/workspaces/:workspaceId/api-keys',
+      'PATCH /api/workspaces/:workspaceId/api-keys/:keyId',
+      'POST /api/workspaces/:workspaceId/api-keys',
+      'POST /api/workspaces/:workspaceId/api-keys/:keyId/revoke',
+    ]);
+    // No Global key-management route and no unauthenticated key route.
+    expect(production.some((r) => r.includes('/global/') && r.includes('api-keys'))).toBe(false);
+    expect(EXPECTED_PUBLIC.every((r) => !r.includes('api-keys'))).toBe(true);
+  });
+
   it('answers 401 without a session for every registered route except the two public ones', async () => {
     const publicSeen: string[] = [];
     for (const { method, path } of routes) {
@@ -117,6 +151,19 @@ describe('default-deny route coverage', () => {
       }
     }
     expect(publicSeen.sort()).toEqual([...EXPECTED_PUBLIC].sort());
+  });
+
+  it('answers 401 for every protected route with an invalid bearer key, and 400 when a cookie is sent as well', async () => {
+    const bearer = { authorization: 'Bearer not-an-api-key' } // malformed: rejected before any storage lookup (this harness has no database);
+    for (const { method, path } of routes) {
+      if (EXPECTED_PUBLIC.includes(`${method} ${path}`)) continue;
+      const res = await call(method, materialize(path), bearer);
+      await res.text();
+      expect(res.status, `${method} ${path}`).toBe(401);
+      const both = await call(method, materialize(path), { ...bearer, cookie: 'seshat_session=x' });
+      await both.text();
+      expect(both.status, `${method} ${path}`).toBe(400);
+    }
   });
 
   it('health is reachable unauthenticated and login is only a POST', async () => {
