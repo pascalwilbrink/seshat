@@ -58,6 +58,19 @@ docker compose up -d db
 
 There is no application configuration yet (no auth or database environment variables).
 
+### CI
+`.github/workflows/ci.yml` runs on every pull request and on pushes to `main`: a frozen `pnpm install`,
+`pnpm build` and `pnpm test`, with a `pgvector/pgvector:pg17` service and a dedicated `seshat_test` database.
+Integration tests are required in CI: it sets `REQUIRE_INTEGRATION_TESTS=true`, so a missing `TEST_DATABASE_URL`
+fails the run instead of skipping the suites. Locally, plain `pnpm test` needs no database and skips them visibly.
+To reproduce CI locally:
+
+```sh
+docker compose up -d db
+docker compose exec db createdb -U seshat seshat_test
+TEST_DATABASE_URL=postgres://seshat:seshat@localhost:5432/seshat_test REQUIRE_INTEGRATION_TESTS=true pnpm test
+```
+
 ## How Gilde uses Seshat *(planned)*
 Gilde attaches Seshat as a project MCP server using a Workspace API key. What an agent can read or write
 through it depends on that key's permissions, and on any Global knowledge explicitly granted to the key.

@@ -12,8 +12,18 @@ export const TEST_DATABASE_URL: string | undefined = process.env.TEST_DATABASE_U
 
 export const SKIP_REASON = 'TEST_DATABASE_URL is not set';
 
+/** CI-only: when "true", a missing TEST_DATABASE_URL fails the run instead of skipping integration suites. */
+export const INTEGRATION_REQUIRED_MESSAGE =
+  'REQUIRE_INTEGRATION_TESTS=true but TEST_DATABASE_URL is not set: integration tests must run, not be skipped';
+
+export function integrationTestsRequired(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.REQUIRE_INTEGRATION_TESTS === 'true';
+}
+
 /** `describe` that runs only when TEST_DATABASE_URL is set; the skip reason is part of the suite name. */
 export function describeIntegration(name: string, fn: () => void): void {
+  // Applies to every suite that uses this helper, so a suite can never be skipped silently in CI.
+  if (!TEST_DATABASE_URL && integrationTestsRequired()) throw new Error(INTEGRATION_REQUIRED_MESSAGE);
   if (TEST_DATABASE_URL) describe(name, fn);
   else describe.skip(`${name} [skipped: ${SKIP_REASON}]`, fn);
 }

@@ -1,16 +1,40 @@
 import { defineConfig } from 'vitest/config';
 import { TEST_ADMIN_ENV } from './test/fixtures/admin.ts';
 
-export default defineConfig({
-  // Spec files are excluded from tsconfig.json, so enable legacy (TypeScript-style) decorators here.
-  // No decorator metadata is emitted: always use explicit @Inject(token).
+// Spec files are excluded from tsconfig.json, so enable legacy (TypeScript-style) decorators here.
+// No decorator metadata is emitted: always use explicit @Inject(token).
+const shared = {
   oxc: { decorator: { legacy: true } },
   test: {
     // Safe test-only admin credentials so config loading works without a .env file.
     env: { ...TEST_ADMIN_ENV },
-    include: ['src/**/*.spec.ts', 'test/**/*.spec.ts'],
+  },
+};
+
+export default defineConfig({
+  test: {
     globalSetup: ['./test/global-setup.ts'],
-    // Integration suites share one dedicated database (extension up/down is database-scoped).
-    fileParallelism: false,
+    projects: [
+      {
+        ...shared,
+        test: {
+          ...shared.test,
+          name: 'unit',
+          include: ['src/**/*.spec.ts', 'test/**/*.spec.ts'],
+          exclude: ['**/node_modules/**', 'test/**/*.integration.spec.ts', 'src/**/*.integration.spec.ts'],
+        },
+      },
+      {
+        ...shared,
+        test: {
+          ...shared.test,
+          name: 'integration',
+          include: ['src/**/*.integration.spec.ts', 'test/**/*.integration.spec.ts'],
+          // Integration suites share one dedicated database, and some drop/recreate the
+          // database-scoped `vector` extension, so their files must not run in parallel.
+          fileParallelism: false,
+        },
+      },
+    ],
   },
 });
