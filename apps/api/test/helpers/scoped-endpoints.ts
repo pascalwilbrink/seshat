@@ -7,7 +7,7 @@ import { getActionRequirement, type Action, type Permission } from '@seshat/doma
  */
 export interface ScopedEndpoint {
   action: Action;
-  method: 'GET' | 'POST' | 'PATCH' | 'DELETE';
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE';
   /** Path below the scope segment, with `:fileId`, `:collectionId` or `:tagId` when the route addresses a resource. */
   path: string;
   /** Permissions of the requirement. Several entries mean "any of" (shared Tags). */
@@ -22,15 +22,15 @@ export const SCOPED_ENDPOINTS: readonly ScopedEndpoint[] = [
   { action: 'file.list', method: 'GET', path: 'files', needs: ['files:read'], ok: 200, kind: 'read' },
   { action: 'file.get', method: 'GET', path: 'files/:fileId', needs: ['files:read'], ok: 200, kind: 'read' },
   { action: 'file.download', method: 'GET', path: 'files/:fileId/download', needs: ['files:read'], ok: 200, kind: 'read' },
-  { action: 'file.update', method: 'PATCH', path: 'files/:fileId', needs: ['files:write'], ok: 200, kind: 'write' },
+  { action: 'file.update', method: 'PUT', path: 'files/:fileId', needs: ['files:write'], ok: 200, kind: 'write' },
   { action: 'file.delete', method: 'DELETE', path: 'files/:fileId', needs: ['files:delete'], ok: 204, kind: 'write' },
   { action: 'collection.list', method: 'GET', path: 'collections', needs: ['collections:read'], ok: 200, kind: 'read' },
   { action: 'collection.create', method: 'POST', path: 'collections', needs: ['collections:write'], ok: 201, kind: 'write' },
   { action: 'collection.get', method: 'GET', path: 'collections/:collectionId', needs: ['collections:read'], ok: 200, kind: 'read' },
-  { action: 'collection.update', method: 'PATCH', path: 'collections/:collectionId', needs: ['collections:write'], ok: 200, kind: 'write' },
+  { action: 'collection.update', method: 'PUT', path: 'collections/:collectionId', needs: ['collections:write'], ok: 200, kind: 'write' },
   { action: 'collection.delete', method: 'DELETE', path: 'collections/:collectionId', needs: ['collections:write'], ok: 204, kind: 'write' },
   { action: 'tag.list', method: 'GET', path: 'tags', needs: ['files:read', 'memories:read'], ok: 200, kind: 'read' },
-  { action: 'tag.rename', method: 'PATCH', path: 'tags/:tagId', needs: ['files:write', 'memories:write'], ok: 200, kind: 'write' },
+  { action: 'tag.rename', method: 'PUT', path: 'tags/:tagId', needs: ['files:write', 'memories:write'], ok: 200, kind: 'write' },
   { action: 'tag.delete', method: 'DELETE', path: 'tags/:tagId', needs: ['files:write', 'memories:write'], ok: 204, kind: 'write' },
 ];
 
