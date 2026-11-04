@@ -30,6 +30,7 @@ let routes: { method: string; path: string }[];
 async function fakeInitialize(ds: unknown) {
   const d = ds as { isInitialized: boolean; destroy: () => Promise<void> };
   d.isInitialized = true;
+  (d as { query?: unknown }).query = async () => [{ '?column?': 1 }];
   d.destroy = async () => {
     d.isInitialized = false;
   };
