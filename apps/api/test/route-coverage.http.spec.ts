@@ -4,6 +4,7 @@ import type { AddressInfo } from 'node:net';
 import { Controller, Delete, Get, type INestApplication, Module, Patch, Post, Put } from '@nestjs/common';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { TEST_ADMIN_ENV } from './fixtures/admin.js';
+import { catalogMismatches, expectedRouteStrings } from './helpers/scoped-endpoints.js';
 
 /** A controller added by a hypothetical future feature, with no public marker of any kind. */
 @Controller('future-feature')
@@ -162,6 +163,30 @@ describe('default-deny route coverage', () => {
     // No Global key-management route and no unauthenticated key route.
     expect(production.some((r) => r.includes('/global/') && r.includes('api-keys'))).toBe(false);
     expect(EXPECTED_PUBLIC.every((r) => !r.includes('api-keys'))).toBe(true);
+  });
+
+  it('the HTTP isolation matrix enumerates exactly the Files, Collections and Tags routes that are registered', () => {
+    const scoped = (r: string) => /\/api\/(global|workspaces\/:workspaceId)\/(files|collections|tags)(\/|$)/.test(r);
+    const production = routes.filter((r) => !r.path.startsWith('/api/future-feature')).map((r) => `${r.method} ${r.path}`).filter(scoped).sort();
+    expect(production).toEqual(expectedRouteStrings());
+    expect(catalogMismatches()).toEqual([]);
+  });
+
+  it('refuses every Files/Collections/Tags route without credentials, never echoing hostile ids, bodies or names', async () => {
+    const SENTINEL = 'SENTINEL-hostile-9f3a';
+    for (const route of expectedRouteStrings()) {
+      const [method, tpl] = route.split(' ') as [string, string];
+      const p = tpl.replace(':workspaceId', SENTINEL).replace(/:[A-Za-z]+/g, SENTINEL);
+      const res = await fetch(`${base}${p}?name=${SENTINEL}&tag=${SENTINEL}`, {
+        method,
+        headers: { 'content-type': 'application/json' },
+        body: method === 'GET' || method === 'DELETE' ? undefined : JSON.stringify({ name: SENTINEL, tags: [SENTINEL] }),
+      });
+      const text = await res.text();
+      expect(res.status, route).toBe(401);
+      expect(text, route).not.toContain(SENTINEL);
+      expect(res.headers.getSetCookie(), route).toEqual([]);
+    }
   });
 
   it('answers 401 without a session for every registered route except the two public ones', async () => {
