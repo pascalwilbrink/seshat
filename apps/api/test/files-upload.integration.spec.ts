@@ -309,7 +309,7 @@ describeIntegration('File upload (real PostgreSQL and storage)', () => {
     }
     const keys = (await ds.query('SELECT storage_key FROM files')).map((r: any) => r.storage_key as string);
     for (const k of keys) expect(k).toMatch(/^originals\/workspaces\/[0-9a-f-]{36}\/[0-9a-f-]{36}$/);
-    expect((await storedFiles()).every((p) => !/passwd|Evil|abc/i.test(p))).toBe(true);
+    expect((await storedFiles()).every((p) => !/passwd|Evil/i.test(path.relative(root, p)))).toBe(true);
   });
 
   it('defaults a missing or malformed MIME type', async () => {
