@@ -7,3 +7,11 @@ export interface FileUploadedEvent {
   id: string;
   scope: ScopeRef;
 }
+
+export const FILE_DELETED_EVENT = 'file.deleted';
+
+/** Emitted only after the delete transaction committed (the row, joins and the cleanup intent are already persisted). */
+export interface FileDeletedEvent {
+  id: string;
+  scope: ScopeRef;
+}

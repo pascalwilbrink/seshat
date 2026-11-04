@@ -1,10 +1,11 @@
 import type { IncomingMessage } from 'node:http';
-import { Controller, Inject, Param, Post, Req } from '@nestjs/common';
+import { Body, Controller, Delete, HttpCode, Inject, Param, Patch, Post, Req } from '@nestjs/common';
 import { CurrentPrincipal } from '../auth/http.js';
 import type { Principal } from '../auth/principal.js';
+import { ZodValidationPipe } from '../common/zod-validation.pipe.js';
 import { WorkspaceScopePipe } from '../scopes/scope-params.pipe.js';
 import { type ScopeRef, globalScope } from '../scopes/scope-ref.js';
-import type { FileDto } from './file.dto.js';
+import { type FileDto, type UpdateFileInput, updateFileSchema } from './file.dto.js';
 import { FilesService } from './files.service.js';
 
 /**
@@ -27,5 +28,40 @@ export class FilesController {
     @Req() req: IncomingMessage,
   ): Promise<FileDto> {
     return this.files.upload(principal, scope, req);
+  }
+
+  @Patch('global/files/:fileId')
+  updateGlobal(
+    @CurrentPrincipal() principal: Principal,
+    @Param('fileId') fileId: string,
+    @Body(new ZodValidationPipe(updateFileSchema)) body: UpdateFileInput,
+  ): Promise<FileDto> {
+    return this.files.update(principal, globalScope(), fileId, body);
+  }
+
+  @Patch('workspaces/:workspaceId/files/:fileId')
+  update(
+    @CurrentPrincipal() principal: Principal,
+    @Param('workspaceId', new WorkspaceScopePipe()) scope: ScopeRef,
+    @Param('fileId') fileId: string,
+    @Body(new ZodValidationPipe(updateFileSchema)) body: UpdateFileInput,
+  ): Promise<FileDto> {
+    return this.files.update(principal, scope, fileId, body);
+  }
+
+  @Delete('global/files/:fileId')
+  @HttpCode(204)
+  removeGlobal(@CurrentPrincipal() principal: Principal, @Param('fileId') fileId: string): Promise<void> {
+    return this.files.remove(principal, globalScope(), fileId);
+  }
+
+  @Delete('workspaces/:workspaceId/files/:fileId')
+  @HttpCode(204)
+  remove(
+    @CurrentPrincipal() principal: Principal,
+    @Param('workspaceId', new WorkspaceScopePipe()) scope: ScopeRef,
+    @Param('fileId') fileId: string,
+  ): Promise<void> {
+    return this.files.remove(principal, scope, fileId);
   }
 }

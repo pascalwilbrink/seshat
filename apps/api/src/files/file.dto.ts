@@ -1,3 +1,5 @@
+import { z } from 'zod';
+import { FILE_NAME_MAX_LENGTH } from './file-name.js';
 import type { IngestionStatus } from './file.entity.js';
 
 /** Allowlisted file metadata. Never includes the storage key or any filesystem path. */
@@ -49,3 +51,24 @@ export function toFileDto(r: FileRow, tags: string[]): FileDto {
     updatedAt: new Date(r.updated_at).toISOString(),
   };
 }
+
+/**
+ * `PATCH` body: only the display name, the optional Collection (null clears it) and the full tag-name list (replaces the
+ * current tags). Everything else, including ownership, storage, hash, size and status, is an unknown field (400).
+ * Collection and tag contents are validated in the service (uniform 400s).
+ */
+export const updateFileSchema = z
+  .strictObject({
+    name: z
+      .string({ error: 'Name must be a string' })
+      .trim()
+      .min(1, 'Name must not be empty')
+      .max(FILE_NAME_MAX_LENGTH * 4, 'Name is too long')
+      .optional(),
+    collectionId: z.string({ error: 'Collection must be a string or null' }).nullable().optional(),
+    tags: z.array(z.string({ error: 'Tags must be strings' })).max(100, 'Too many tags').optional(),
+  })
+  .refine((v) => v.name !== undefined || v.collectionId !== undefined || v.tags !== undefined, {
+    error: 'Provide name, collectionId and/or tags',
+  });
+export type UpdateFileInput = z.infer<typeof updateFileSchema>;
