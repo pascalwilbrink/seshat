@@ -1,29 +1,67 @@
 # Seshat
 
-Seshat is a document RAG service. It stores documents in Postgres with pgvector and exposes them to AI agents
-as a read-only MCP server. Humans upload and manage documents through a web UI and API.
+Seshat is knowledge and memory infrastructure for AI agents and applications. It is meant to store files and
+knowledge, extract and index their content, keep persistent memories, retrieve relevant information through
+search, and expose controlled access through an API and MCP.
 
-> **Status: planned.** This repo currently only contains guidance and Gilde wiring. The application described
-> below is built by later jobs; sections marked *(planned)* do not exist yet.
+> **Status: early scaffold.** Only the workspace, a health endpoint, a minimal web page and a development
+> database definition exist. Everything described under "Core concepts" and "How Gilde uses Seshat" is planned.
+> See [Status](#status).
 
-## Architecture *(planned)*
-- One repo, one Docker container. A pnpm workspace with `apps/api` (NestJS: MCP server and upload/ingestion
-  API) and `apps/web` (Next.js App Router: upload and browse). One Dockerfile builds both and runs them together.
-- Postgres with the pgvector extension; TypeORM for entities and migrations.
-- Uploaded files go through a pluggable ingestion layer (below) that turns them into documents.
-- MCP over Streamable HTTP with a bearer token. Tools are read-only: search a collection, get a document, list
-  collections. Upload, delete and re-index exist only in the API/UI, never in MCP.
+## Core concepts *(planned)*
+- **Global** is a special scope for knowledge shared across the account. It is not a Workspace. Global
+  resources are never available to a Workspace automatically: access must be granted explicitly.
+- **Workspaces** (for example `Gilde`) are the organizational and security boundary. Their data is isolated
+  from other Workspaces by default.
+- **Files** are original uploaded documents. A file belongs to Global or one Workspace, optionally to a
+  Collection. Originals are kept separate from extracted text, chunks and embeddings.
+- **Collections** optionally organize files within a scope. They are not security boundaries.
+- **Memories** are persistent knowledge records (`fact`, `decision`, `preference`, `experience`, `procedure`,
+  `context`), not uploaded documents. They belong to Global or one Workspace.
+- **Tags** are flat labels for Files and Memories, scoped to Global or one Workspace. They help filtering but
+  do not grant access.
+- **Workspace API keys** belong to a Workspace and carry explicit permissions (for example files, memories,
+  collections, search, and read access to Global knowledge). A key cannot reach another Workspace, and Global
+  access must be granted explicitly.
+- **MCP** is the access interface for agents. Its tools are gated by the calling key's permissions, and they
+  can both read and write.
+
+The full guidance is in [`AGENTS.md`](AGENTS.md); foundation decisions are in
+[`docs/adr/0001-foundation-decisions.md`](docs/adr/0001-foundation-decisions.md).
+
+## Status
+Present:
+- A pnpm workspace with `apps/api` (NestJS, only `GET /api/health`, on `PORT` or 4200) and `apps/web`
+  (Next.js App Router, one minimal page on port 3000).
+- `docker-compose.yml` with a development database (`pgvector/pgvector:pg17`). The apps do not connect to it yet.
+- Gilde wiring: `.gilde.json`, `CLAUDE.md` and the skills sync workflow.
+
+Planned (does not exist yet): persistence, the Global/Workspace domain, Files, Collections, Memories, Tags,
+API keys, ingestion, search, the MCP server, CI, and a Dockerfile. The target is one application container plus
+one Postgres database. There is no single Docker image today.
 
 ## Run and develop
-- Present: the pnpm workspace with a minimal `apps/api` (NestJS, `GET /api/health`) and `apps/web` (Next.js App Router), and `docker-compose.yml` with a Postgres + pgvector database for development. `pnpm install`, `pnpm test` and `pnpm build` work. The RAG domain, TypeORM/persistence, ingestion and MCP are not implemented yet.
-- Planned: the single Dockerfile that runs both apps in one container.
-- Requires Docker and Postgres with the pgvector extension (for example the `pgvector/pgvector` image).
-- Run everything in one container with Docker; for development use `pnpm install` and `pnpm dev`.
-- Configuration (database URL, MCP bearer token) comes from environment variables; exact names follow with the scaffold.
+Requires Node.js, pnpm (the repo pins `pnpm@10.28.0`) and, for the database, Docker.
 
-## How Gilde uses Seshat
-Gilde attaches Seshat as a project MCP server. Agents get the read-only tools only (search a collection, get a
-document, list collections) and authenticate with a bearer token. Agents cannot change documents.
+```sh
+pnpm install   # install dependencies
+pnpm test      # unit tests
+pnpm build     # build both apps
+pnpm dev       # API on :4200 (GET /api/health) and web on :3000
+```
+
+Optional: start the development database. The scaffold does not use it yet.
+
+```sh
+docker compose up -d db
+```
+
+There is no application configuration yet (no auth or database environment variables).
+
+## How Gilde uses Seshat *(planned)*
+Gilde attaches Seshat as a project MCP server using a Workspace API key. What an agent can read or write
+through it depends on that key's permissions, and on any Global knowledge explicitly granted to the key.
+There is no Seshat MCP endpoint today.
 
 ## Ingestion extension point *(planned)*
 - `FileIngestor` is an interface with `forFileExtensions(): string[]` and a method that ingests a file and
