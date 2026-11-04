@@ -4,6 +4,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 const getSession = vi.fn();
 vi.mock('@/lib/session', () => ({ getSession: () => getSession() }));
 vi.mock('next/navigation', () => ({
+  usePathname: () => '/global/overview',
   redirect: (to: string) => {
     throw new Error(`REDIRECT:${to}`);
   },
@@ -11,6 +12,7 @@ vi.mock('next/navigation', () => ({
 
 import ProtectedLayout from './layout';
 import Page from './page';
+import { OverviewView } from '@/components/overview-view';
 
 beforeEach(() => getSession.mockReset());
 
@@ -19,14 +21,17 @@ describe('protected layout', () => {
     getSession.mockResolvedValue(v);
     await expect(ProtectedLayout({ children: null })).rejects.toThrow('REDIRECT:/login');
   });
-  it('protects the root page: authenticated content renders, otherwise redirect', async () => {
+  it('redirects the authenticated root to Global Overview', () => {
+    expect(() => Page()).toThrow('REDIRECT:/global/overview');
+  });
+  it('protects scoped pages: authenticated shell renders, otherwise redirect', async () => {
     getSession.mockResolvedValue({ username: 'admin' });
-    const html = renderToStaticMarkup(await ProtectedLayout({ children: <Page /> }));
-    expect(html).toContain('<h1>Seshat</h1>');
+    const html = renderToStaticMarkup(await ProtectedLayout({ children: <OverviewView scope={{ kind: 'global' }} /> }));
+    expect(html).toContain('Global');
     expect(html).toContain('admin');
     expect(html).not.toMatch(/session|cookie/i);
     getSession.mockResolvedValue(null);
-    await expect(ProtectedLayout({ children: <Page /> })).rejects.toThrow('REDIRECT:/login');
+    await expect(ProtectedLayout({ children: null })).rejects.toThrow('REDIRECT:/login');
   });
   it('is dynamic so sessions are never cached between users', async () => {
     const mod = await import('./layout');

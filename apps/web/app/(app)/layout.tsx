@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { redirect } from 'next/navigation';
-import { AppHeader } from '@/components/app-header';
+import { AppShell } from '@/components/app-shell';
 import { getSession } from '@/lib/session';
 
 // Session state is per request and per user: never statically render or cache this layout.
@@ -11,9 +11,6 @@ export default async function ProtectedLayout({ children }: { children: ReactNod
   const session = await getSession();
   if (!session) redirect('/login');
   return (
-    <>
-      <AppHeader username={session.username} />
-      {children}
-    </>
+    <AppShell username={session.username}>{children}</AppShell>
   );
 }
