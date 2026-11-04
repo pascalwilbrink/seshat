@@ -31,3 +31,12 @@ describe('scope from URL', () => {
     expect(scopeHref({ kind: 'global' }, 'api-keys')).toBe('/global/overview');
   });
 });
+
+describe('Files section', () => {
+  it('exists in both scopes', () => {
+    expect(sectionFromPathname('/global/files')).toBe('files');
+    expect(sectionFromPathname('/w/a/files')).toBe('files');
+    expect(scopeHref({ kind: 'global' }, 'files')).toBe('/global/files');
+    expect(scopeHref({ kind: 'workspace', slug: 'a' }, 'files')).toBe('/w/a/files');
+  });
+});

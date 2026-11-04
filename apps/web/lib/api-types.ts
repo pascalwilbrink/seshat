@@ -43,3 +43,40 @@ export interface CollectionDto {
   createdAt: string;
   updatedAt: string;
 }
+
+export type IngestionStatus = 'pending' | 'processing' | 'indexed' | 'failed';
+export const INGESTION_STATUSES: readonly IngestionStatus[] = ['pending', 'processing', 'indexed', 'failed'];
+
+/** File metadata as returned by the API; the original content and storage location are never part of it. */
+export interface FileDto {
+  id: string;
+  scope: 'global' | 'workspace';
+  workspaceId: string | null;
+  name: string;
+  extension: string | null;
+  mimeType: string;
+  sizeBytes: number;
+  sha256: string;
+  collectionId: string | null;
+  tags: string[];
+  ingestionStatus: IngestionStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FilePageDto {
+  items: FileDto[];
+  nextCursor: string | null;
+  hasMore: boolean;
+  limit: number;
+}
+
+export interface TagDto {
+  id: string;
+  name: string;
+  scope: 'global' | 'workspace';
+  workspaceId: string | null;
+  fileCount: number;
+  createdAt: string;
+  updatedAt: string;
+}

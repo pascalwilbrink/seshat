@@ -72,6 +72,7 @@ describe('scope switcher', () => {
     const sections = screen.getByRole('navigation', { name: 'Sections' });
     expect(within(sections).getAllByRole('link').map((l) => [l.textContent, l.getAttribute('href')])).toEqual([
       ['Overview', '/w/alpha/overview'],
+      ['Files', '/w/alpha/files'],
       ['Collections', '/w/alpha/collections'],
       ['API Keys', '/w/alpha/api-keys'],
       ['Settings', '/w/alpha/settings'],
@@ -85,6 +86,7 @@ describe('scope switcher', () => {
     const sections = screen.getByRole('navigation', { name: 'Sections' });
     expect(within(sections).getAllByRole('link').map((l) => [l.textContent, l.getAttribute('href')])).toEqual([
       ['Overview', '/global/overview'],
+      ['Files', '/global/files'],
       ['Collections', '/global/collections'],
       ['Settings', '/global/settings'],
     ]);
