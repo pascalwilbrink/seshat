@@ -52,10 +52,12 @@ const EXPECTED_ROUTES: string[] = [
   'POST /api/auth/login',
   'POST /api/auth/logout',
   'POST /api/global/collections',
+  'POST /api/global/files',
   'POST /api/global/workspaces',
   'POST /api/workspaces/:workspaceId/api-keys',
   'POST /api/workspaces/:workspaceId/api-keys/:keyId/revoke',
   'POST /api/workspaces/:workspaceId/collections',
+  'POST /api/workspaces/:workspaceId/files',
 ];
 
 let app: INestApplication;

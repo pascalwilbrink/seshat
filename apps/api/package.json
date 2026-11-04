@@ -22,6 +22,7 @@
     "@nestjs/typeorm": "^12.0.2",
     "@seshat/domain": "workspace:*",
     "argon2": "^0.45.2",
+    "busboy": "1.6.0",
     "pg": "^8.23.1",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
@@ -29,6 +30,7 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@types/busboy": "^1.5.5",
     "@types/node": "^26.6.6",
     "@types/pg": "^8.23.1",
     "tsx": "^4.23.15",
