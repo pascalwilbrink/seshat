@@ -373,15 +373,19 @@ Agents update this section when something lands. Everything under "Planned" is n
 ### Present in the repository
 
 - pnpm workspace (`pnpm@10.28.0`, `apps/*`, `packages/*`) with recursive `pnpm build`, `pnpm test` and a parallel `pnpm dev`.
-- `apps/api` (`@seshat/api`): NestJS, ESM, only `GET /api/health`; listens on `PORT` or 4200.
-- `apps/web` (`@seshat/web`): Next.js App Router with a single minimal page on port 3000.
-- `docker-compose.yml` with a `db` service (`pgvector/pgvector:pg17`) for development; the scaffold does not connect to it yet.
+- `apps/api` (`@seshat/api`): NestJS, ESM, `/api` prefix, `PORT` or 4200. Postgres + TypeORM with migrations in `src/migrations/` (see `apps/api/src/database/README.md`); configuration is validated in `src/config/` and read only through `getAppConfig()`.
+- Scopes (`src/scopes/`): `ScopeRef` (`{ kind: 'global' } | { kind: 'workspace', workspaceId }`) parsed from explicit routes `/api/global/...` and `/api/workspaces/:workspaceId/...`; services receive it as an argument. Global is a scope, never a Workspace row. Scoped entities extend `ScopedEntity` (`scope`, `workspace_id`, check `CK_scope_workspace_consistency` = `workspace_id` null exactly for Global, restricting FK to `workspaces`, `(scope, workspace_id)` index); their migration must create all of it.
+- Workspaces (`src/workspaces/`): `GET/POST /api/global/workspaces`, `GET/PATCH/DELETE /api/workspaces/:workspaceId`, plus `GET /api/global/overview` and `GET /api/workspaces/:workspaceId/overview`. Slugs are lowercase kebab-case, unique, fixed after creation; `global` is reserved. Delete needs `{ slug }` as confirmation (400 on mismatch) and emits `workspace.deleted` (`{ id }`) after commit; a Workspace that still has data cannot be deleted (409).
+- Single admin (`src/auth/`): no user table. Env `ADMIN_USERNAME`, `ADMIN_PASSWORD_HASH` (argon2id; generate with `pnpm --filter @seshat/api admin:hash-password`, which reads the password without echo and prints only the hash) and `SESSION_SECRET` (>= 32 characters); optional `TRUST_PROXY`. `POST /api/auth/login` sets the signed `seshat_session` cookie (HttpOnly, SameSite=Lax, path `/`, 7-day expiry, `Secure` whenever `NODE_ENV` is not `development`), `POST /api/auth/logout` clears it, `GET /api/auth/me`. Login is limited to 5 attempts per IP per minute and fails with one generic 401.
+- Authorization: `SessionGuard` is global and default-deny; only `PUBLIC_ROUTES` (`GET /api/health`, `POST /api/auth/login`) skip it. All access decisions go through `AuthorizationService.assertCan(principal, action, scope)`; `Principal` is a discriminated union (only `admin`) and is the extension point for future credentials. It fails closed, and a missing and a denied Workspace give the same 404. New endpoints must call `assertCan` with an explicit `ScopeRef`, appear in `test/route-coverage.http.spec.ts`'s default-deny coverage, and leak no secrets (`test/sensitive-data.http.spec.ts`).
+- `apps/web` (`@seshat/web`): Next.js App Router, port 3000. Browser traffic stays same-origin: `/api/*` is rewritten to the server-only `API_URL` (default `http://localhost:4200`). Every page except `/login` requires a session. Dark app shell with a scope switcher (Global first); routes `/global/{overview,settings}` and `/w/<slug>/{overview,settings}`; Workspace create, rename and slug-confirmed delete live in Settings.
+- `docker-compose.yml` with a `db` service (`pgvector/pgvector:pg17`) for development.
 - `.gilde.json`, `CLAUDE.md` (`@AGENTS.md`) and the skills sync workflow `.github/workflows/sync-skills.yaml`.
 - CI (`.github/workflows/ci.yml`): frozen install, build and tests on PRs and pushes to `main` with a pgvector service; `REQUIRE_INTEGRATION_TESTS=true` makes a missing `TEST_DATABASE_URL` fail instead of skip.
 
 ### Planned (not implemented)
 
-- Persistence (TypeORM, migrations), the Global/Workspace domain, Files, Collections, Memories, Tags and API keys.
+- Files, Collections, Memories, Tags and API keys (Workspace credentials are a future `Principal` kind).
 - Ingestion (`FileIngestor`, `FileIngestorProvider`, plain-text `txt`/`md` first), search and indexing.
 - The MCP server, a release/deploy pipeline, and a Dockerfile (target: one app container plus one database).
 
