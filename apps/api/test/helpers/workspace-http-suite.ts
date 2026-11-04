@@ -21,7 +21,7 @@ export function defineWorkspaceHttpSuite(h: { boot(opts?: { authorization?: Auth
       ['GET', '/api/global/workspaces'],
       ['POST', '/api/global/workspaces'],
       ['GET', `/api/workspaces/${id}`],
-      ['PATCH', `/api/workspaces/${id}`],
+      ['PUT', `/api/workspaces/${id}`],
       ['DELETE', `/api/workspaces/${id}`],
       ['GET', '/api/global/overview'],
       ['GET', `/api/workspaces/${id}/overview`],
@@ -43,7 +43,7 @@ export function defineWorkspaceHttpSuite(h: { boot(opts?: { authorization?: Auth
     expect((await app.request('GET', '/api/global/workspaces')).json).toHaveLength(1);
     expect((await app.request('GET', `/api/workspaces/${id}`)).json).toMatchObject({ id, slug: 'graphnous' });
 
-    const renamed = await app.request('PATCH', `/api/workspaces/${id}`, { name: 'Graph', description: null });
+    const renamed = await app.request('PUT', `/api/workspaces/${id}`, { name: 'Graph', description: null });
     expect(renamed.status).toBe(200);
     expect(renamed.json).toMatchObject({ id, name: 'Graph', slug: 'graphnous', description: null });
 
@@ -111,14 +111,30 @@ export function defineWorkspaceHttpSuite(h: { boot(opts?: { authorization?: Auth
     }
     expect((await app.request('POST', '/api/global/workspaces', '{"name": ' + SECRET)).status).toBe(400);
     const ws = (await create(app, { name: 'Fixed' })).json;
-    for (const body of [{}, { slug: 'new-slug' }, { name: ' ' }, { name: 'ok', token: SECRET }, { name: null }]) {
-      const r = await app.request('PATCH', `/api/workspaces/${ws.id}`, body);
+    for (const body of [{}, { name: 'ok' }, { description: null }, { name: 'ok', description: null, slug: 'new-slug' }, { name: ' ', description: null }, { name: 'ok', description: null, token: SECRET }, { name: null, description: null }]) {
+      const r = await app.request('PUT', `/api/workspaces/${ws.id}`, body);
       expect(r.status, JSON.stringify(body)).toBe(400);
       expect(r.text).not.toContain(SECRET);
     }
     expect((await app.request('GET', `/api/workspaces/${ws.id}`)).json.slug).toBe('fixed');
+    // A missing editable field is a 400 naming it; PUT never updates partially.
+    const noDescription = await app.request('PUT', `/api/workspaces/${ws.id}`, { name: 'Renamed' });
+    expect(noDescription.status).toBe(400);
+    expect(noDescription.text).toContain('description');
+    const noName = await app.request('PUT', `/api/workspaces/${ws.id}`, { description: 'x' });
+    expect(noName.status).toBe(400);
+    expect(noName.text).toContain('name');
+    expect((await app.request('GET', `/api/workspaces/${ws.id}`)).json.name).toBe('Fixed');
+    // Explicit null clears the description; PATCH is gone and changes nothing.
+    await app.request('PUT', `/api/workspaces/${ws.id}`, { name: 'Fixed', description: 'Some text' });
+    const cleared = await app.request('PUT', `/api/workspaces/${ws.id}`, { name: 'Fixed', description: null });
+    expect(cleared.status).toBe(200);
+    expect(cleared.json.description).toBeNull();
+    const patched = await app.request('PATCH', `/api/workspaces/${ws.id}`, { name: 'Patched', description: null });
+    expect(patched.status).toBe(404);
+    expect((await app.request('GET', `/api/workspaces/${ws.id}`)).json.name).toBe('Fixed');
     for (const bad of ['not-a-uuid', 'global', '123', `${ws.id}x`]) {
-      for (const [m, suffix] of [['GET', ''], ['PATCH', ''], ['DELETE', ''], ['GET', '/overview']] as const) {
+      for (const [m, suffix] of [['GET', ''], ['PUT', ''], ['DELETE', ''], ['GET', '/overview']] as const) {
         const r = await app.request(m, `/api/workspaces/${bad}${suffix}`, m === 'GET' ? undefined : { slug: 'x', name: 'x' });
         expect(r.status, `${m} ${bad}${suffix}`).toBe(400);
       }
@@ -164,7 +180,7 @@ export function defineWorkspaceHttpSuite(h: { boot(opts?: { authorization?: Auth
     const routes = (id: string) =>
       [
         ['GET', `/api/workspaces/${id}`, undefined],
-        ['PATCH', `/api/workspaces/${id}`, { name: 'n' }],
+        ['PUT', `/api/workspaces/${id}`, { name: 'n', description: null }],
         ['DELETE', `/api/workspaces/${id}`, { slug: 'denied-ws' }],
         ['GET', `/api/workspaces/${id}/overview`, undefined],
       ] as const;

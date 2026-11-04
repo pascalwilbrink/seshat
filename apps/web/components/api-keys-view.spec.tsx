@@ -54,7 +54,7 @@ function server(initial: ApiKeyDto[], opts: { fail?: Record<string, number> } = 
       return json({ apiKey: created, secret: SECRET }, 201);
     }
     const m = /^\/api\/workspaces\/uuid-1\/api-keys\/([^/]+)(\/revoke)?$/.exec(url);
-    if (m && method === 'PATCH') {
+    if (m && method === 'PUT') {
       const body = JSON.parse(String(init?.body));
       keys = keys.map((k) => (k.id === m[1] ? { ...k, ...body } : k));
       return json(keys.find((k) => k.id === m[1]));
@@ -303,7 +303,7 @@ describe('create and one-time secret', () => {
 });
 
 describe('edit', () => {
-  it('edits name and permissions with the same controls and PATCHes only those', async () => {
+  it('edits name and permissions with the same controls and PUTs only those', async () => {
     server([key()]);
     view();
     await userEvent.click(await screen.findByRole('button', { name: /Edit/ }));
@@ -315,7 +315,7 @@ describe('edit', () => {
     await userEvent.click(form.getByRole('button', { name: 'Agent: read and write' }));
     await userEvent.click(form.getByRole('button', { name: 'Save changes' }));
     expect(await screen.findByText('API key saved.')).toBeInTheDocument();
-    const patch = calls('PATCH')[0]!;
+    const patch = calls('PUT')[0]!;
     expect(patch[0]).toBe(`${KEYS}/k1`);
     const body = JSON.parse(String(patch[1].body));
     expect(Object.keys(body).sort()).toEqual(['name', 'permissions']);
@@ -324,7 +324,7 @@ describe('edit', () => {
   });
 
   it('keeps the form and shows the failure when saving fails', async () => {
-    server([key()], { fail: { [`PATCH ${KEYS}/k1`]: 500 } });
+    server([key()], { fail: { [`PUT ${KEYS}/k1`]: 500 } });
     view();
     await userEvent.click(await screen.findByRole('button', { name: /Edit/ }));
     await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));

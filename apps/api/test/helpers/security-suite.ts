@@ -127,7 +127,7 @@ export function defineSecuritySuite(name: string, makeWorld: () => Promise<World
         expect(created.status).toBe(201);
         const { secret, apiKey } = JSON.parse(created.text) as { secret: string; apiKey: { id: string } };
         expect((await call('file.upload', 'own', secret)).status).toBe(200);
-        const edit = await w.app.http('PATCH', `/api/workspaces/${own}/api-keys/${apiKey.id}`, { admin: true, body: { permissions: ['files:read'] } });
+        const edit = await w.app.http('PUT', `/api/workspaces/${own}/api-keys/${apiKey.id}`, { admin: true, body: { name: 'k', permissions: ['files:read'] } });
         expect(edit.status).toBe(200);
         const denied = await call('file.upload', 'own', secret);
         expect(denied.status).toBe(403);
@@ -139,7 +139,7 @@ export function defineSecuritySuite(name: string, makeWorld: () => Promise<World
         expect(after.status).toBe(401);
         expect(JSON.parse(after.text)).toEqual(expect.objectContaining(GENERIC_401));
         // Revocation is irreversible: it cannot be edited back to life.
-        expect((await w.app.http('PATCH', `/api/workspaces/${own}/api-keys/${apiKey.id}`, { admin: true, body: { name: 'again' } })).status).toBe(409);
+        expect((await w.app.http('PUT', `/api/workspaces/${own}/api-keys/${apiKey.id}`, { admin: true, body: { name: 'again', permissions: ['files:read'] } })).status).toBe(409);
         expect((await call('file.list', 'own', secret)).status).toBe(401);
       });
     });
@@ -197,12 +197,12 @@ export function defineSecuritySuite(name: string, makeWorld: () => Promise<World
         const attempts: Array<[string, string, unknown?]> = [
           ['GET', keyRoute(own)],
           ['POST', keyRoute(own), { name: 'escalate', permissions: ['files:read'] }],
-          ['PATCH', `${keyRoute(own)}/${keyId}`, { name: 'renamed' }],
+          ['PUT', `${keyRoute(own)}/${keyId}`, { name: 'renamed', permissions: ['files:read'] }],
           ['POST', `${keyRoute(own)}/${keyId}/revoke`],
           ['GET', '/api/global/workspaces'],
           ['POST', '/api/global/workspaces', { name: 'Created by key' }],
           ['GET', `/api/workspaces/${own}`],
-          ['PATCH', `/api/workspaces/${own}`, { name: 'Hijacked' }],
+          ['PUT', `/api/workspaces/${own}`, { name: 'Hijacked', description: null }],
           ['DELETE', `/api/workspaces/${own}`, { slug: w.own.slug }],
           ['GET', `/api/workspaces/${own}/overview`],
           ['GET', '/api/global/overview'],
@@ -231,7 +231,7 @@ export function defineSecuritySuite(name: string, makeWorld: () => Promise<World
         expect(created.status).toBe(201);
         const id = JSON.parse(created.text).apiKey.id as string;
         expect((await w.app.http('GET', `/api/workspaces/${own}/api-keys`, { admin: true })).status).toBe(200);
-        expect((await w.app.http('PATCH', `/api/workspaces/${own}/api-keys/${id}`, { admin: true, body: { name: 'admin renamed' } })).status).toBe(200);
+        expect((await w.app.http('PUT', `/api/workspaces/${own}/api-keys/${id}`, { admin: true, body: { name: 'admin renamed', permissions: ['files:read'] } })).status).toBe(200);
         expect((await w.app.http('POST', `/api/workspaces/${own}/api-keys/${id}/revoke`, { admin: true })).status).toBe(200);
         expect((await w.app.http('GET', '/api/global/workspaces', { admin: true })).status).toBe(200);
         expect((await w.app.http('GET', `/api/workspaces/${own}`, { admin: true })).status).toBe(200);

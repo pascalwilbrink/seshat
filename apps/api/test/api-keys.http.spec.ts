@@ -133,7 +133,7 @@ describe('API key management (admin HTTP)', () => {
     expect(list.json).toHaveLength(1);
     expect(Object.keys(list.json[0]).sort()).toEqual(DTO_FIELDS);
 
-    const edit = await req('PATCH', `${url()}/${id}`, { name: 'Renamed', permissions: ['memories:read'] });
+    const edit = await req('PUT', `${url()}/${id}`, { name: 'Renamed', permissions: ['memories:read'] });
     expect(edit.status).toBe(200);
     expect(edit.json).toMatchObject({ name: 'Renamed', permissions: ['memories:read'] });
     expect(Object.keys(edit.json).sort()).toEqual(DTO_FIELDS);
@@ -169,25 +169,37 @@ describe('API key management (admin HTTP)', () => {
     expect(ok.json.apiKey.expiresAt).toBe(future);
   });
 
-  it('PATCH only accepts name/permissions', async () => {
+  it('PUT requires the complete body and only accepts name/permissions', async () => {
     const { json } = await req('POST', url(), { name: 'p', permissions: ['search'] });
     const id = json.apiKey.id;
-    for (const body of [{}, { expiresAt: null }, { revokedAt: null }, { prefix: 'AAAAAAAA' }, { workspaceId: other }, { permissions: [] }, { name: '' }]) {
-      expect((await req('PATCH', `${url()}/${id}`, body)).status, JSON.stringify(body)).toBe(400);
+    const ok = { name: 'p', permissions: ['search'] };
+    for (const body of [{}, { name: 'p' }, { permissions: ['search'] }, { ...ok, expiresAt: null }, { ...ok, revokedAt: null }, { ...ok, prefix: 'AAAAAAAA' }, { ...ok, workspaceId: other }, { name: 'p', permissions: [] }, { name: '', permissions: ['search'] }]) {
+      expect((await req('PUT', `${url()}/${id}`, body)).status, JSON.stringify(body)).toBe(400);
     }
+    const missing = await req('PUT', `${url()}/${id}`, { name: 'p' });
+    expect(JSON.stringify(missing.json)).toContain('permissions');
+    expect((await req('PUT', `${url()}/${id}`, { permissions: ['search'] })).status).toBe(400);
+  });
+
+  it('PATCH is gone: it is answered like any unsupported method and changes nothing', async () => {
+    const { json } = await req('POST', url(), { name: 'keep', permissions: ['search'] });
+    const id = json.apiKey.id;
+    const res = await req('PATCH', `${url()}/${id}`, { name: 'changed', permissions: ['search'] });
+    expect(res.status).toBe(404);
+    expect(store.rows.find((r) => r.id === id)!.name).toBe('keep');
   });
 
   it('is scoped by Workspace and key id: substitution, missing keys and missing Workspaces are 404', async () => {
     const { json } = await req('POST', url(), { name: 'mine', permissions: ['search'] });
     const id = json.apiKey.id;
-    expect((await req('PATCH', `${url(other)}/${id}`, { name: 'hijack' })).status).toBe(404);
+    expect((await req('PUT', `${url(other)}/${id}`, { name: 'hijack', permissions: ['search'] })).status).toBe(404);
     expect((await req('POST', `${url(other)}/${id}/revoke`)).status).toBe(404);
     expect((await req('GET', url(other))).json).toEqual([]);
     const row = store.rows.find((r) => r.id === id)!;
     expect(row.name).toBe('mine');
     expect(row.revokedAt).toBeNull();
-    expect((await req('PATCH', `${url()}/${randomUUID()}`, { name: 'x' })).status).toBe(404);
-    expect((await req('PATCH', `${url()}/not-a-uuid`, { name: 'x' })).status).toBe(404);
+    expect((await req('PUT', `${url()}/${randomUUID()}`, { name: 'x', permissions: ['search'] })).status).toBe(404);
+    expect((await req('PUT', `${url()}/not-a-uuid`, { name: 'x', permissions: ['search'] })).status).toBe(404);
     expect((await req('POST', `${url()}/${randomUUID()}/revoke`)).status).toBe(404);
     const ghost = randomUUID();
     for (const [m, p, b] of [['GET', url(ghost)], ['POST', url(ghost), { name: 'x', permissions: ['search'] }]] as const) {
@@ -204,8 +216,8 @@ describe('API key management (admin HTTP)', () => {
     expect(second.status).toBe(200);
     expect(second.json.revokedAt).toBe(first.json.revokedAt);
     expect(store.rows.some((r) => r.id === id)).toBe(true);
-    for (const body of [{ name: 'again' }, { permissions: ['files:read'] }]) {
-      expect((await req('PATCH', `${url()}/${id}`, body)).status).toBe(409);
+    for (const body of [{ name: 'again', permissions: ['search'] }, { name: 'r', permissions: ['files:read'] }]) {
+      expect((await req('PUT', `${url()}/${id}`, body)).status).toBe(409);
     }
     expect((await req('GET', url())).json.find((k: { id: string }) => k.id === id).status).toBe('revoked');
   });

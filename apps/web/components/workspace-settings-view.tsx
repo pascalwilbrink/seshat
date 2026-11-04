@@ -87,7 +87,7 @@ function Loaded({ workspace, onDeleted }: { workspace: WorkspaceDto; onDeleted: 
     setSaved(false);
     try {
       const res = await apiFetch(base, {
-        method: 'PATCH',
+        method: 'PUT',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ name: String(data.get('name') ?? ''), description: String(data.get('description') ?? '') }),
       });

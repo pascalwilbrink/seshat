@@ -59,7 +59,7 @@ export function FileDetail({
     setSaved(false);
     try {
       const res = await apiFetch(`${base}/${encodeURIComponent(file.id)}`, {
-        method: 'PATCH',
+        method: 'PUT',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ name: name.trim(), collectionId: collectionId || null, tags: parseTagInput(tagText) }),
       });

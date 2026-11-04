@@ -240,45 +240,59 @@ describeIntegration('File edit and delete (real PostgreSQL and storage)', () => 
       [scopeWs, name],
     )) as { id: string }[])[0]!.id;
 
-  describe('PATCH', () => {
+  describe('PUT', () => {
     it('renames, sets and clears the Collection and replaces tags in Global and a Workspace, keeping bytes, hash and size', async () => {
       for (const [p, ws] of [[g, null], [w(wsA), wsA]] as const) {
         const f = await put(p, 'original bytes', [{ name: 'tags', value: 'old' }]);
         const key = (await keyOf(f.id))!;
         const col = await collection(ws, `c-${ws ?? 'g'}`);
-        const res = await send('PATCH', `${p}/${f.id}`, { name: '../Notes.MD', collectionId: col, tags: ['B', 'a', 'a'] });
+        const res = await send('PUT', `${p}/${f.id}`, { name: '../Notes.MD', collectionId: col, tags: ['B', 'a', 'a'] });
         expect(res.status).toBe(200);
         expect(res.json).toMatchObject({ id: f.id, name: 'Notes.MD', extension: 'md', collectionId: col, tags: ['a', 'b'], sha256: f.sha256, sizeBytes: f.sizeBytes, mimeType: 'text/plain' });
         expect(res.text).not.toMatch(/originals|storage|seshat-lifecycle/i);
         expect(await readFile(objectPath(key), 'utf8')).toBe('original bytes');
         expect(await keyOf(f.id)).toBe(key);
 
-        const cleared = await send('PATCH', `${p}/${f.id}`, { collectionId: null });
+        const cleared = await send('PUT', `${p}/${f.id}`, { name: 'Notes.MD', collectionId: null, tags: ['a', 'b'] });
         expect(cleared.json).toMatchObject({ collectionId: null, name: 'Notes.MD', tags: ['a', 'b'] });
-        const noTags = await send('PATCH', `${p}/${f.id}`, { tags: [] });
+        const noTags = await send('PUT', `${p}/${f.id}`, { name: 'Notes.MD', collectionId: null, tags: [] });
         expect(noTags.json.tags).toEqual([]);
         expect(Number((await ds.query('SELECT count(*) c FROM file_tags WHERE file_id = $1', [f.id]))[0].c)).toBe(0);
       }
     });
 
-    it('rejects unknown and forbidden fields and empty bodies with 400 and changes nothing', async () => {
+    it('rejects missing, unknown and forbidden fields with 400 naming the field, and PATCH is gone', async () => {
       const f = await put(w(wsA));
+      const full = { name: 'ok', collectionId: null, tags: [] };
+      for (const field of ['name', 'collectionId', 'tags']) {
+        const { [field]: _omit, ...rest } = full as Record<string, unknown>;
+        const res = await send('PUT', `${w(wsA)}/${f.id}`, rest);
+        expect(res.status).toBe(400);
+        expect(res.text).toContain(field);
+      }
+      expect((await send('PATCH', `${w(wsA)}/${f.id}`, full)).status).toBe(404);
       const before = (await ds.query('SELECT * FROM files WHERE id = $1', [f.id]))[0];
       for (const body of [
         {},
-        { name: '' },
-        { name: 'ok', sha256: 'a'.repeat(64) },
-        { storageKey: 'x' },
-        { scope: 'global' },
-        { workspaceId: wsB },
-        { sizeBytes: 1 },
-        { ingestionStatus: 'indexed' },
-        { mimeType: 'text/html' },
-        { collectionId: 5 },
-        { tags: 'a' },
-        { tags: [1] },
+        { name: 'ok' },
+        { collectionId: null },
+        { tags: [] },
+        { name: 'ok', collectionId: null },
+        { name: 'ok', tags: [] },
+        { collectionId: null, tags: [] },
+        { ...full, name: '' },
+        { ...full, sha256: 'a'.repeat(64) },
+        { ...full, storageKey: 'x' },
+        { ...full, scope: 'global' },
+        { ...full, workspaceId: wsB },
+        { ...full, sizeBytes: 1 },
+        { ...full, ingestionStatus: 'indexed' },
+        { ...full, mimeType: 'text/html' },
+        { ...full, collectionId: 5 },
+        { ...full, tags: 'a' },
+        { ...full, tags: [1] },
       ]) {
-        const res = await send('PATCH', `${w(wsA)}/${f.id}`, body);
+        const res = await send('PUT', `${w(wsA)}/${f.id}`, body);
         expect(res.status, JSON.stringify(body)).toBe(400);
       }
       expect((await ds.query('SELECT * FROM files WHERE id = $1', [f.id]))[0]).toEqual(before);
@@ -290,7 +304,7 @@ describeIntegration('File edit and delete (real PostgreSQL and storage)', () => 
       const global = await collection(null, 'global-col');
       const results = [];
       for (const collectionId of [randomUUID(), foreign, global, 'not-a-uuid']) {
-        const res = await send('PATCH', `${w(wsA)}/${f.id}`, { name: 'renamed.txt', tags: ['new'], collectionId });
+        const res = await send('PUT', `${w(wsA)}/${f.id}`, { name: 'renamed.txt', tags: ['new'], collectionId });
         expect(res.status).toBe(400);
         results.push(res.text);
       }
@@ -304,7 +318,7 @@ describeIntegration('File edit and delete (real PostgreSQL and storage)', () => 
     it('rolls back rename and Collection when a tag name is invalid', async () => {
       const f = await put(w(wsA));
       const col = await collection(wsA, 'c');
-      const res = await send('PATCH', `${w(wsA)}/${f.id}`, { name: 'changed.txt', collectionId: col, tags: ['bad name!'] });
+      const res = await send('PUT', `${w(wsA)}/${f.id}`, { name: 'changed.txt', collectionId: col, tags: ['bad name!'] });
       expect(res.status).toBe(400);
       expect((await ds.query('SELECT name, collection_id FROM files WHERE id = $1', [f.id]))[0]).toEqual({ name: 'doc.txt', collection_id: null });
     });
@@ -315,26 +329,26 @@ describeIntegration('File edit and delete (real PostgreSQL and storage)', () => 
       const write = bearer(wsA, ['files:write']);
       const otherWs = bearer(wsB, ['files:write', 'files:read', 'files:delete']);
       const globalKey = bearer(wsA, ['files:write', 'global:read']);
-      const body = { name: 'x.txt' };
+      const body = { name: 'x.txt', collectionId: null, tags: [] };
 
-      expect((await send('PATCH', `${w(wsA)}/${f.id}`, body, { key: read })).status).toBe(403);
-      expect((await send('PATCH', `${w(wsA)}/${f.id}`, body, { key: write })).status).toBe(200);
+      expect((await send('PUT', `${w(wsA)}/${f.id}`, body, { key: read })).status).toBe(403);
+      expect((await send('PUT', `${w(wsA)}/${f.id}`, body, { key: write })).status).toBe(200);
 
-      const foreign = await send('PATCH', `${w(wsA)}/${f.id}`, body, { key: otherWs });
-      const missing = await send('PATCH', `${w(wsA)}/${randomUUID()}`, body, { key: otherWs });
+      const foreign = await send('PUT', `${w(wsA)}/${f.id}`, body, { key: otherWs });
+      const missing = await send('PUT', `${w(wsA)}/${randomUUID()}`, body, { key: otherWs });
       expect(foreign.status).toBe(404);
       expect(foreign.text).toBe(missing.text);
-      expect((await send('PATCH', `${w(wsA)}/not-a-uuid`, body)).status).toBe(404);
+      expect((await send('PUT', `${w(wsA)}/not-a-uuid`, body)).status).toBe(404);
 
       const gf = await put(g);
-      const gRes = await send('PATCH', `${g}/${gf.id}`, body, { key: globalKey });
-      const gMissing = await send('PATCH', `${g}/${randomUUID()}`, body, { key: globalKey });
+      const gRes = await send('PUT', `${g}/${gf.id}`, body, { key: globalKey });
+      const gMissing = await send('PUT', `${g}/${randomUUID()}`, body, { key: globalKey });
       expect(gRes.status).toBe(gMissing.status);
       expect(gRes.text).toBe(gMissing.text);
       expect((await ds.query('SELECT name FROM files WHERE id = $1', [gf.id]))[0].name).toBe('doc.txt');
 
       // a Workspace-A file addressed through Workspace B's path (admin) is simply missing
-      expect((await send('PATCH', `${w(wsB)}/${f.id}`, body)).status).toBe(404);
+      expect((await send('PUT', `${w(wsB)}/${f.id}`, body)).status).toBe(404);
       expect((await ds.query('SELECT name FROM files WHERE id = $1', [f.id]))[0].name).toBe('x.txt');
     });
   });

@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, Inject, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Inject, Param, Put, Post } from '@nestjs/common';
 import { CurrentPrincipal } from '../auth/http.js';
 import type { Principal } from '../auth/principal.js';
 import { ZodValidationPipe } from '../common/zod-validation.pipe.js';
@@ -36,7 +36,7 @@ export class CollectionsController {
     return this.collections.get(principal, globalScope(), id);
   }
 
-  @Patch('global/collections/:collectionId')
+  @Put('global/collections/:collectionId')
   updateGlobal(
     @CurrentPrincipal() principal: Principal,
     @Param('collectionId') id: string,
@@ -77,7 +77,7 @@ export class CollectionsController {
     return this.collections.get(principal, scope, id);
   }
 
-  @Patch('workspaces/:workspaceId/collections/:collectionId')
+  @Put('workspaces/:workspaceId/collections/:collectionId')
   update(
     @CurrentPrincipal() principal: Principal,
     @Param('workspaceId', new WorkspaceScopePipe()) scope: ScopeRef,

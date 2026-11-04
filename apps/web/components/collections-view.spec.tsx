@@ -52,7 +52,7 @@ function server(data: Record<string, CollectionDto[]>, opts: { fail?: Record<str
       data[base] = [...data[base], created];
       return json(created, 201);
     }
-    if (method === 'PATCH') {
+    if (method === 'PUT') {
       const body = JSON.parse(String(init?.body));
       if (data[base].some((c) => c.id !== id && c.name === body.name)) return json({ message: 'A Collection with this name already exists' }, 409);
       data[base] = data[base].map((c) => (c.id === id ? { ...c, ...body } : c));
@@ -179,7 +179,7 @@ describe.each([
     expect(screen.getByRole('button', { name: 'Create' })).toBeEnabled();
   });
 
-  it('renames with PATCH to the same scope path and refreshes', async () => {
+  it('renames with PUT to the same scope path and refreshes', async () => {
     server({ [base]: [col()] });
     view(scope);
     await userEvent.click(await screen.findByRole('button', { name: /Rename/ }));
@@ -190,8 +190,8 @@ describe.each([
     await userEvent.clear(screen.getByLabelText(/Description/));
     await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     expect(await screen.findByText('Collection “Docs” saved.')).toBeInTheDocument();
-    expect(calls('PATCH')[0][0]).toBe(`${base}/c1`);
-    expect(JSON.parse(String(calls('PATCH')[0][1].body))).toEqual({ name: 'Docs', description: null });
+    expect(calls('PUT')[0][0]).toBe(`${base}/c1`);
+    expect(JSON.parse(String(calls('PUT')[0][1].body))).toEqual({ name: 'Docs', description: null });
     expect(await screen.findByRole('rowheader', { name: 'Docs' })).toBeInTheDocument();
   });
 

@@ -148,9 +148,12 @@ describeIntegration('Collections API (real PostgreSQL)', () => {
       expect(created.json).toMatchObject({ name: 'Reports', description: 'Q1', fileCount: 0 });
       const id = created.json.id as string;
       expect((await req('GET', `${path}/${id}`)).json).toMatchObject({ id, name: 'Reports' });
-      const renamed = await req('PATCH', `${path}/${id}`, { name: 'Renamed', description: null });
+      const renamed = await req('PUT', `${path}/${id}`, { name: 'Renamed', description: null });
       expect(renamed.json).toMatchObject({ name: 'Renamed', description: null });
-      expect((await req('PATCH', `${path}/${id}`, { description: 'only desc' })).json).toMatchObject({ name: 'Renamed', description: 'only desc' });
+      expect((await req('PUT', `${path}/${id}`, { name: 'Renamed', description: 'only desc' })).json).toMatchObject({ name: 'Renamed', description: 'only desc' });
+      expect((await req('PUT', `${path}/${id}`, { name: 'Renamed' })).status).toBe(400); // description is required
+      expect((await req('PATCH', `${path}/${id}`, { name: 'Patched', description: null })).status).toBe(404); // PATCH is gone
+      expect((await req('GET', `${path}/${id}`)).json).toMatchObject({ name: 'Renamed', description: 'only desc' });
       expect((await req('GET', path)).json.map((c: any) => c.id)).toContain(id);
       expect((await req('DELETE', `${path}/${id}`)).status).toBe(204);
       expect((await req('GET', `${path}/${id}`)).status).toBe(404);
@@ -164,8 +167,11 @@ describeIntegration('Collections API (real PostgreSQL)', () => {
     }
     expect((await req('POST', w(wsA), { name: 'x'.repeat(100) })).status).toBe(201);
     const c = (await req('POST', w(wsA), { name: 'ToPatch' })).json;
-    for (const body of [{}, { scope: 'global' }, { workspaceId: wsB }, { name: '' }]) {
-      expect((await req('PATCH', `${w(wsA)}/${c.id}`, body)).status).toBe(400);
+    const missingDescription = await req('PUT', `${w(wsA)}/${c.id}`, { name: 'ok' });
+    expect(missingDescription.text).toContain('description');
+    expect((await req('PUT', `${w(wsA)}/${c.id}`, { description: null })).text).toContain('name');
+    for (const body of [{}, { name: 'ok' }, { description: null }, { name: 'ok', description: null, scope: 'global' }, { name: 'ok', description: null, workspaceId: wsB }, { name: '', description: null }]) {
+      expect((await req('PUT', `${w(wsA)}/${c.id}`, body)).status).toBe(400);
     }
   });
 
@@ -182,8 +188,8 @@ describeIntegration('Collections API (real PostgreSQL)', () => {
 
     // rename collision
     const other = (await req('POST', w(wsA), { name: 'Other' })).json;
-    expect((await req('PATCH', `${w(wsA)}/${other.id}`, { name: 'DOCS' })).status).toBe(409);
-    expect((await req('PATCH', `${w(wsA)}/${other.id}`, { name: 'OTHER' })).status).toBe(200); // own name, different case
+    expect((await req('PUT', `${w(wsA)}/${other.id}`, { name: 'DOCS', description: null })).status).toBe(409);
+    expect((await req('PUT', `${w(wsA)}/${other.id}`, { name: 'OTHER', description: null })).status).toBe(200); // own name, different case
   });
 
   it('counts only same-scope files and keeps files and tags when a Collection is deleted', async () => {
@@ -221,10 +227,10 @@ describeIntegration('Collections API (real PostgreSQL)', () => {
     const missing = randomUUID();
     const calls: [string, (id: string) => string, unknown?][] = [
       ['GET', (id) => `${w(wsB)}/${id}`],
-      ['PATCH', (id) => `${w(wsB)}/${id}`, { name: 'x' }],
+      ['PUT', (id) => `${w(wsB)}/${id}`, { name: 'x', description: null }],
       ['DELETE', (id) => `${w(wsB)}/${id}`],
       ['GET', (id) => `${g}/${id}`],
-      ['PATCH', (id) => `${g}/${id}`, { name: 'x' }],
+      ['PUT', (id) => `${g}/${id}`, { name: 'x', description: null }],
       ['DELETE', (id) => `${g}/${id}`],
     ];
     for (const [m, path, body] of calls) {
@@ -278,10 +284,10 @@ describeIntegration('Collections API (real PostgreSQL)', () => {
     // reads need collections:read, mutations collections:write; the 403 names only the permission
     expect((await req('GET', w(wsA), undefined, { key: reader })).status).toBe(200);
     expect((await req('GET', `${w(wsA)}/${c.id}`, undefined, { key: reader })).status).toBe(200);
-    const denied = await req('POST', w(wsA), { name: 'Nope' }, { key: reader });
+    const denied = await req('POST', w(wsA), { name: 'Nope', description: null }, { key: reader });
     expect(denied.status).toBe(403);
     expect(denied.text).toContain('collections:write');
-    expect((await req('PATCH', `${w(wsA)}/${c.id}`, { name: 'Nope' }, { key: reader })).status).toBe(403);
+    expect((await req('PUT', `${w(wsA)}/${c.id}`, { name: 'Nope', description: null }, { key: reader })).status).toBe(403);
     expect((await req('DELETE', `${w(wsA)}/${c.id}`, undefined, { key: reader })).status).toBe(403);
     expect((await req('GET', w(wsA), undefined, { key: writer })).status).toBe(403);
     expect((await req('GET', w(wsA), undefined, { key: none })).status).toBe(403);
@@ -308,7 +314,7 @@ describeIntegration('Collections API (real PostgreSQL)', () => {
     // no key ever mutates Global
     const allGrants = bearer(wsA, ['collections:read', 'collections:write', 'global:read']);
     expect((await req('POST', g, { name: 'x' }, { key: allGrants })).status).toBe(403);
-    expect((await req('PATCH', `${g}/${gc.id}`, { name: 'x' }, { key: allGrants })).status).toBe(403);
+    expect((await req('PUT', `${g}/${gc.id}`, { name: 'x', description: null }, { key: allGrants })).status).toBe(403);
     expect((await req('DELETE', `${g}/${gc.id}`, undefined, { key: allGrants })).status).toBe(403);
     expect((await req('POST', g, { name: 'x' }, { key: writer })).status).toBe(404);
     expect((await req('GET', `${g}/${gc.id}`, undefined, { cookie: adminCookie })).status).toBe(200);

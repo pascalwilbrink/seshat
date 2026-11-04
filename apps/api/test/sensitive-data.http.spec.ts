@@ -55,7 +55,7 @@ describe('sensitive data stays out of logs, errors and responses (assembled HTTP
     record(await observe(app, 'POST', '/api/global/workspaces', { name: 'Alpha', extra: SENTINEL_BODY }));
     record(await observe(app, 'POST', '/api/global/workspaces', { name: 'Alpha' })); // slug collision (driver message contains sentinel)
     record(await observe(app, 'POST', '/api/global/workspaces', `{"name":"${SENTINEL_BODY}"`));
-    record(await observe(app, 'PATCH', `/api/workspaces/${id}`, { name: 12, slug: SENTINEL_BODY }));
+    record(await observe(app, 'PUT', `/api/workspaces/${id}`, { name: 12, slug: SENTINEL_BODY }));
     record(await observe(app, 'DELETE', `/api/workspaces/${id}`, { slug: SENTINEL_BODY }));
     record(await observe(app, 'GET', `/api/workspaces/${SENTINEL_BODY}`));
     mem.failNextDelete = Object.assign(new Error(`connect ECONNREFUSED ${SENTINEL_DRIVER}`), { driverError: { code: '08006' } });
@@ -117,7 +117,7 @@ describe('sensitive data stays out of logs, errors and responses (assembled HTTP
       Promise.all(
         [
           ['GET', `/api/workspaces/${id}`, undefined],
-          ['PATCH', `/api/workspaces/${id}`, { name: 'n' }],
+          ['PUT', `/api/workspaces/${id}`, { name: 'n', description: null }],
           ['DELETE', `/api/workspaces/${id}`, { slug: 'hidden' }],
           ['GET', `/api/workspaces/${id}/overview`, undefined],
         ].map(async ([m, p, b]) => {

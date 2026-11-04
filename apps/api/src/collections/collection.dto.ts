@@ -20,10 +20,8 @@ const description = z
 export const createCollectionSchema = z.strictObject({ name, description: description.optional() });
 export type CreateCollectionInput = z.infer<typeof createCollectionSchema>;
 
-/** Only name and description are updatable; ownership (scope) never changes. */
-export const updateCollectionSchema = z
-  .strictObject({ name: name.optional(), description: description.optional() })
-  .refine((v) => v.name !== undefined || v.description !== undefined, { error: 'Provide name and/or description' });
+/** `PUT` body: name and description (null clears it), both required; ownership (scope) never changes. */
+export const updateCollectionSchema = z.strictObject({ name, description });
 export type UpdateCollectionInput = z.infer<typeof updateCollectionSchema>;
 
 export interface CollectionDto {

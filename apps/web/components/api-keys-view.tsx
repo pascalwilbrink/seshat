@@ -355,7 +355,7 @@ function EditForm({ base, apiKey, onCancel, onSaved }: { base: string; apiKey: A
     setError(null);
     try {
       const res = await apiFetch(`${base}/${encodeURIComponent(apiKey.id)}`, {
-        method: 'PATCH',
+        method: 'PUT',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ name: name.trim(), permissions }),
       });
