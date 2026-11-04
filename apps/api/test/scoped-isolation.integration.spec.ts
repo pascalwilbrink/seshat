@@ -197,11 +197,11 @@ describeIntegration('Files, Collections and Tags: endpoint-wide scope isolation 
       case 'file.upload':
         return { multipart: valid ? multipart([{ name: 'file', filename: 'new.txt', data: Buffer.from('payload') }, { name: 'tags', value: uniq('up') }]) : multipart([{ name: 'bogus', value: 'x' }]) };
       case 'file.update':
-        return { json: valid ? { name: 'renamed.txt' } : { bogus: 1 } };
+        return { json: valid ? { name: 'renamed.txt', collectionId: null, tags: [] } : { bogus: 1 } };
       case 'collection.create':
-        return { json: valid ? { name: uniq('created') } : { bogus: 1 } };
+        return { json: valid ? { name: uniq('created'), description: null } : { bogus: 1 } };
       case 'collection.update':
-        return { json: valid ? { name: uniq('renamed') } : { bogus: 1 } };
+        return { json: valid ? { name: uniq('renamed'), description: null } : { bogus: 1 } };
       case 'tag.rename':
         return { json: valid ? { name: uniq('renamed') } : { name: 'not valid!' } };
       default:
@@ -467,7 +467,7 @@ describeIntegration('Files, Collections and Tags: endpoint-wide scope isolation 
       const first = await upload(bad[0]!);
       expect(first.status).toBe(400);
       for (const id of bad) expect(fresh(await upload(id))).toEqual(fresh(first));
-      const upd = (id: string) => raw('PATCH', `/api/workspaces/${wsA}/files/${a.fileId}`, k, { json: { collectionId: id, name: 'moved.txt' } });
+      const upd = (id: string) => raw('PUT', `/api/workspaces/${wsA}/files/${a.fileId}`, k, { json: { collectionId: id, name: 'moved.txt', tags: [] } });
       const firstUpd = await upd(bad[0]!);
       expect(firstUpd.status).toBe(400);
       for (const id of bad) expect(fresh(await upd(id))).toEqual(fresh(firstUpd));
@@ -479,8 +479,8 @@ describeIntegration('Files, Collections and Tags: endpoint-wide scope isolation 
       expect(after.intents).toEqual([]);
       expect(events.filter((e) => e === 'file.uploaded')).toEqual([]);
       // The same for the Global file: a Workspace Collection is "other scope" there.
-      const gk = await raw('PATCH', `/api/global/files/${g.fileId}`, { admin: true }, { json: { collectionId: a.collectionId } });
-      const gm = await raw('PATCH', `/api/global/files/${g.fileId}`, { admin: true }, { json: { collectionId: randomUUID() } });
+      const gk = await raw('PUT', `/api/global/files/${g.fileId}`, { admin: true }, { json: { collectionId: a.collectionId, name: 'g.txt', tags: [] } });
+      const gm = await raw('PUT', `/api/global/files/${g.fileId}`, { admin: true }, { json: { collectionId: randomUUID(), name: 'g.txt', tags: [] } });
       expect(gk.status).toBe(400);
       expect(fresh(gk)).toEqual(fresh(gm));
     });
@@ -595,8 +595,8 @@ describeIntegration('Files, Collections and Tags: endpoint-wide scope isolation 
       expect(file.collectionId).toBeNull();
       expect(file.tags).toEqual([a.tagName]);
       const second = uniq('second');
-      await raw('PATCH', `/api/workspaces/${wsA}/files/${a.fileId}`, k, { json: { tags: [a.tagName, second] } });
-      const detached = JSON.parse((await raw('PATCH', `/api/workspaces/${wsA}/files/${a.fileId}`, k, { json: { tags: [second] } })).text);
+      await raw('PUT', `/api/workspaces/${wsA}/files/${a.fileId}`, k, { json: { name: file.name, collectionId: null, tags: [a.tagName, second] } });
+      const detached = JSON.parse((await raw('PUT', `/api/workspaces/${wsA}/files/${a.fileId}`, k, { json: { name: file.name, collectionId: null, tags: [second] } })).text);
       expect(detached.tags).toEqual([second]);
       // The detached Tag still exists (Tags are reusable); deleting it affects no file.
       const tags = JSON.parse((await raw('GET', `/api/workspaces/${wsA}/tags`, k)).text) as { id: string; name: string }[];
