@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
-import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { getDataSourceToken } from '@nestjs/typeorm';
 import type { DataSource, EntityManager } from 'typeorm';
@@ -8,11 +8,12 @@ import { AuthorizationService } from '../auth/authorization.service.js';
 import type { Principal } from '../auth/principal.js';
 import { CollectionsService } from '../collections/collection.service.js';
 import { APP_CONFIG, type AppConfig } from '../config/app-config.js';
-import { type ScopeRef, scopeColumns } from '../scopes/scope-ref.js';
+import { type ScopeRef, isUuid, scopeColumns } from '../scopes/scope-ref.js';
 import { FILE_STORAGE, type FileStorage, originalObjectKey } from '../storage/file-storage.js';
+import { StorageCleanupService } from '../storage/storage-cleanup.service.js';
 import { TagsService, scopeKeyOf } from '../tags/tags.service.js';
-import { type FileDto, type FileRow, toFileDto } from './file.dto.js';
-import { FILE_UPLOADED_EVENT, type FileUploadedEvent } from './file.events.js';
+import { type FileDto, type FileRow, type UpdateFileInput, toFileDto } from './file.dto.js';
+import { FILE_DELETED_EVENT, FILE_UPLOADED_EVENT, type FileUploadedEvent } from './file.events.js';
 import { extensionOf, sanitizeFileName, sanitizeMimeType } from './file-name.js';
 import { receiveUpload } from './upload-reader.js';
 
@@ -36,6 +37,7 @@ export class FilesService {
     @Inject(FILE_STORAGE) private readonly storage: FileStorage,
     @Inject(CollectionsService) private readonly collections: CollectionsService,
     @Inject(TagsService) private readonly tags: TagsService,
+    @Inject(StorageCleanupService) private readonly cleanup: StorageCleanupService,
     @Inject(EventEmitter2) private readonly events: EventEmitter2,
     @Inject(APP_CONFIG) private readonly config: Pick<AppConfig, 'maxUploadBytes'>,
   ) {}
@@ -71,6 +73,78 @@ export class FilesService {
       if (pgCode(err) === '23503') throw new NotFoundException('Not Found'); // Workspace removed meanwhile
       throw err;
     }
+  }
+
+  /**
+   * `file.update` (`files:write`). Renames (sanitized display name), sets or clears the same-scope Collection and/or
+   * replaces the tag names, all in one transaction under a row lock; any failure leaves the file unchanged. Bytes,
+   * hash, size, MIME type and storage key are never touched.
+   */
+  async update(principal: Principal, scope: ScopeRef, fileId: string, input: UpdateFileInput): Promise<FileDto> {
+    this.authorization.assertCan(principal, 'file.update', scope);
+    if (!isUuid(fileId)) throw new NotFoundException('Not Found');
+    const id = fileId.toLowerCase();
+    return this.dataSource.transaction(async (manager) => {
+      const locked = (await manager.query(`SELECT "id", "name", "collection_id" FROM "files" WHERE "id" = $1 AND "scope_key" = $2 FOR UPDATE`, [
+        id,
+        scopeKeyOf(scope),
+      ])) as { name: string; collection_id: string | null }[];
+      if (locked.length === 0) throw new NotFoundException('Not Found');
+      const current = locked[0]!;
+
+      let name = current.name;
+      if (input.name !== undefined) {
+        name = sanitizeFileName(input.name);
+      }
+      let collectionId = current.collection_id;
+      if (input.collectionId !== undefined) {
+        // null clears; a malformed, unknown or other-scope id gives the same 400.
+        collectionId = await this.collections.resolveMembership(manager, scope, input.collectionId);
+      }
+      await manager.query(`UPDATE "files" SET "name" = $2, "extension" = $3, "collection_id" = $4, "updated_at" = now() WHERE "id" = $1`, [
+        id,
+        name,
+        extensionOf(name),
+        collectionId,
+      ]);
+      let tagNames: string[];
+      if (input.tags !== undefined) tagNames = await this.tags.replaceFileTags(manager, scope, id, input.tags);
+      else tagNames = await this.tagNames(manager, scope, id);
+      return this.load(manager, scope, id, tagNames);
+    });
+  }
+
+  /**
+   * `file.delete` (`files:delete`). In one transaction: records the cleanup intent for the stored original, removes the
+   * join rows and the row. Only after the commit `file.deleted` is emitted; its listener (and the startup recovery)
+   * removes the object. A failing listener or storage never turns the committed deletion into an error.
+   */
+  async remove(principal: Principal, scope: ScopeRef, fileId: string): Promise<void> {
+    this.authorization.assertCan(principal, 'file.delete', scope);
+    if (!isUuid(fileId)) throw new NotFoundException('Not Found');
+    const id = fileId.toLowerCase();
+    await this.dataSource.transaction(async (manager) => {
+      const rows = (await manager.query(`SELECT "storage_key" FROM "files" WHERE "id" = $1 AND "scope_key" = $2 FOR UPDATE`, [id, scopeKeyOf(scope)])) as {
+        storage_key: string;
+      }[];
+      if (rows.length === 0) throw new NotFoundException('Not Found');
+      await this.cleanup.record(manager, [{ storageKey: rows[0]!.storage_key, resourceType: 'file', resourceId: id, scopeKey: scopeKeyOf(scope) }]);
+      await manager.query(`DELETE FROM "file_tags" WHERE "file_id" = $1 AND "scope_key" = $2`, [id, scopeKeyOf(scope)]);
+      await manager.query(`DELETE FROM "files" WHERE "id" = $1 AND "scope_key" = $2`, [id, scopeKeyOf(scope)]);
+    });
+    try {
+      await this.events.emitAsync(FILE_DELETED_EVENT, { id, scope });
+    } catch (err) {
+      this.logger.error(`file.deleted listener failed for file ${id} (${err instanceof Error ? err.name : 'unknown'})`);
+    }
+  }
+
+  private async tagNames(manager: EntityManager, scope: ScopeRef, id: string): Promise<string[]> {
+    const rows = (await manager.query(
+      `SELECT t."name" FROM "file_tags" ft JOIN "tags" t ON t."id" = ft."tag_id" WHERE ft."file_id" = $1 AND ft."scope_key" = $2 ORDER BY t."name"`,
+      [id, scopeKeyOf(scope)],
+    )) as { name: string }[];
+    return rows.map((r) => r.name);
   }
 
   private async load(manager: EntityManager, scope: ScopeRef, id: string, tagNames: string[]): Promise<FileDto> {
