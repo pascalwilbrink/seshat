@@ -34,6 +34,7 @@ describeIntegration('migrations (real PostgreSQL)', () => {
       'EnableVectorExtension1762300000000',
       'CreateWorkspaces1762400000000',
       'CreateApiKeys1762500000000',
+      'CreateFilesCollectionsTags1762600000000',
     ]);
   });
 
@@ -44,6 +45,7 @@ describeIntegration('migrations (real PostgreSQL)', () => {
       'EnableVectorExtension1762300000000',
       'CreateWorkspaces1762400000000',
       'CreateApiKeys1762500000000',
+      'CreateFilesCollectionsTags1762600000000',
     ]);
     expect(await vectorInstalled()).toBe(true);
 
@@ -56,10 +58,11 @@ describeIntegration('migrations (real PostgreSQL)', () => {
     const tables = await iso.query(
       `SELECT table_name FROM information_schema.tables WHERE table_schema = '${iso.schema}' ORDER BY table_name`,
     );
-    expect(tables.map((t) => t.table_name)).toEqual(['api_keys', 'migrations', 'workspaces']);
+    expect(tables.map((t) => t.table_name)).toEqual(['api_keys', 'collections', 'file_tags', 'files', 'migrations', 'tags', 'workspaces']);
   });
 
-  it('down drops api_keys, then workspaces, then the extension; re-up succeeds', async () => {
+  it('down drops files tables, api_keys, then workspaces, then the extension; re-up succeeds', async () => {
+    await ds.undoLastMigration({ transaction: 'each' });
     await ds.undoLastMigration({ transaction: 'each' });
     await ds.undoLastMigration({ transaction: 'each' });
     const tables = await iso.query(
@@ -72,7 +75,7 @@ describeIntegration('migrations (real PostgreSQL)', () => {
     expect(await vectorInstalled()).toBe(false);
 
     const again = await ds.runMigrations({ transaction: 'each' });
-    expect(again).toHaveLength(3);
+    expect(again).toHaveLength(4);
     expect(await vectorInstalled()).toBe(true);
   });
 

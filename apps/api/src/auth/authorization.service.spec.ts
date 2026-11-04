@@ -92,8 +92,14 @@ describe('AuthorizationService: API keys', () => {
   it('requires the read permission and global:read for Global reads', () => {
     expect(() => service.assertCan(key(['files:read', 'global:read']), 'file.list', globalScope())).not.toThrow();
     expect(() => service.assertCan(key(['search', 'global:read']), 'search.query', globalScope())).not.toThrow();
-    expect((catch_(() => service.assertCan(key(['global:read']), 'file.list', globalScope())) as Error).message).toBe('Missing permission: files:read');
-    expect((catch_(() => service.assertCan(key(['files:read']), 'file.list', globalScope())) as Error).message).toBe('Missing permission: global:read');
+    expect((catch_(() => service.assertCan(key(['global:read']), 'search.query', globalScope())) as Error).message).toBe('Missing permission: search');
+    expect((catch_(() => service.assertCan(key(['search']), 'search.query', globalScope())) as Error).message).toBe('Missing permission: global:read');
+    // Files, Collections and Tags conceal Global: no grant is the generic missing-resource 404.
+    for (const held of [['global:read'], ['files:read']] as const) {
+      const err = catch_(() => service.assertCan(key(held), 'file.list', globalScope()));
+      expect(err).toBeInstanceOf(NotFoundException);
+      expect((err as NotFoundException).getResponse()).toEqual(new NotFoundException('Not Found').getResponse());
+    }
     expect(service.can(key(['files:write', 'global:read']), 'file.list', globalScope())).toBe(false);
   });
 

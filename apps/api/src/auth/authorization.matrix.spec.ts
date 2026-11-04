@@ -24,6 +24,10 @@ function permissionSets(action: string): Array<[string, Permission[]]> {
   const sets: Array<[string, Permission[]]> = [['empty', []], ['all', [...PERMISSIONS]]];
   for (const p of PERMISSIONS) sets.push([`only ${p}`, [p]]);
   sets.push(['all but global:read', PERMISSIONS.filter((p) => p !== 'global:read')]);
+  if (e.anyOf) {
+    for (const p of e.anyOf) sets.push([`only ${p} + global:read`, [p, 'global:read']]);
+    sets.push(['all but any-of', PERMISSIONS.filter((p) => !e.anyOf!.includes(p))]);
+  }
   if (e.permission) {
     sets.push(['all but required', PERMISSIONS.filter((p) => p !== e.permission)]);
     sets.push(['required + global:read', [e.permission, 'global:read']]);
@@ -55,7 +59,9 @@ describe('policy matrix: the independent table covers the shared catalog exactly
     for (const action of ACTIONS) {
       const catalog = ACTION_CATALOG[action] as { classification: string; permission?: string };
       expect(catalog.classification, action).toBe(EXPECTED[action]!.kind);
-      expect(catalog.permission, action).toBe(EXPECTED[action]!.permission);
+      if (EXPECTED[action]!.anyOf) expect((catalog as { anyOf?: string[] }).anyOf, action).toEqual(EXPECTED[action]!.anyOf);
+      else expect(catalog.permission, action).toBe(EXPECTED[action]!.permission);
+      expect(Boolean((catalog as { concealGlobal?: boolean }).concealGlobal), action).toBe(Boolean(EXPECTED[action]!.concealed));
     }
   });
 
@@ -131,7 +137,50 @@ describe('policy matrix: API key principal', () => {
       expect(service.can(keyWith([e.permission!, 'global:read']), action, scopes.global), action).toBe(true);
       expect(service.can(keyWith([e.permission!]), action, scopes.global), action).toBe(false);
       expect(service.can(keyWith(['global:read']), action, scopes.global), action).toBe(false);
-      expect(service.can(keyWith(PERMISSIONS.filter((p) => p !== e.permission)), action, scopes.global), action).toBe(false);
+      expect(service.can(keyWith(PERMISSIONS.filter((p) => !(e.anyOf ?? [e.permission]).includes(p))), action, scopes.global), action).toBe(false);
+    }
+  });
+
+  it('answers Global without the grant exactly like a missing resource for files, Collections and Tags', () => {
+    const missing = new NotFoundException('Not Found').getResponse();
+    for (const action of ACTIONS.filter((a) => EXPECTED[a]!.concealed)) {
+      for (const held of [[], ['global:read'], [...PERMISSIONS.filter((p) => p !== 'global:read')], ['search']] as Permission[][]) {
+        let thrown: unknown;
+        try {
+          service.assertCan(keyWith(held), action, scopes.global);
+        } catch (err) {
+          thrown = err;
+        }
+        expect(thrown, `${action} [${held}]`).toBeInstanceOf(NotFoundException);
+        expect((thrown as NotFoundException).getResponse()).toEqual(missing);
+      }
+    }
+  });
+
+  it('never lets a key mutate Global, even with every permission, and still hides it from keys that cannot read it', () => {
+    for (const action of ACTIONS.filter((a) => EXPECTED[a]!.concealed && EXPECTED[a]!.kind !== 'read')) {
+      expect(run(keyWith(PERMISSIONS), action, 'global'), action).toEqual({ status: 403, message: 'Forbidden' });
+      expect(run(keyWith(PERMISSIONS.filter((p) => p !== 'global:read')), action, 'global'), action).toEqual({ status: 404 });
+    }
+  });
+
+  it('accepts either side of a shared Tag permission independently in an own Workspace and with the Global grant', () => {
+    for (const [action, pair] of [['tag.list', ['files:read', 'memories:read']], ['tag.rename', ['files:write', 'memories:write']], ['tag.delete', ['files:write', 'memories:write']]] as const) {
+      for (const p of pair) {
+        expect(service.can(keyWith([p]), action, scopes.own), `${action} ${p}`).toBe(true);
+        expect(service.can(keyWith([p, 'global:read']), action, scopes.global), `${action} ${p} global`).toBe(action === 'tag.list');
+      }
+      expect(service.can(keyWith(PERMISSIONS.filter((x) => !(pair as readonly string[]).includes(x))), action, scopes.own), action).toBe(false);
+      expect(run(keyWith([]), action, 'own')).toEqual({ status: 403, message: `Missing permission: ${pair.join(', ')}` });
+    }
+  });
+
+  it('keeps Collection and Tag permissions from conferring file access, and the reverse', () => {
+    for (const action of ['file.list', 'file.get', 'file.download', 'file.upload', 'file.update', 'file.delete'] as const) {
+      expect(service.can(keyWith(['collections:read', 'collections:write', 'memories:read', 'memories:write', 'search', 'global:read']), action, scopes.own), action).toBe(false);
+    }
+    for (const action of ['collection.list', 'collection.get', 'collection.create', 'collection.update', 'collection.delete'] as const) {
+      expect(service.can(keyWith(PERMISSIONS.filter((p) => !p.startsWith('collections:'))), action, scopes.own), action).toBe(false);
     }
   });
 
