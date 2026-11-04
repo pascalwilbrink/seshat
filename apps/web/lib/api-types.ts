@@ -33,3 +33,13 @@ export interface CreatedApiKeyDto {
   apiKey: ApiKeyDto;
   secret: string;
 }
+
+/** A Collection as returned by the API; `fileCount` counts files of the same scope only. */
+export interface CollectionDto {
+  id: string;
+  name: string;
+  description: string | null;
+  fileCount: number;
+  createdAt: string;
+  updatedAt: string;
+}

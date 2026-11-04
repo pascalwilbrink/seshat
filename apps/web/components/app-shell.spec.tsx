@@ -72,10 +72,25 @@ describe('scope switcher', () => {
     const sections = screen.getByRole('navigation', { name: 'Sections' });
     expect(within(sections).getAllByRole('link').map((l) => [l.textContent, l.getAttribute('href')])).toEqual([
       ['Overview', '/w/alpha/overview'],
+      ['Collections', '/w/alpha/collections'],
       ['API Keys', '/w/alpha/api-keys'],
       ['Settings', '/w/alpha/settings'],
     ]);
     await screen.findByRole('link', { name: 'Alpha' });
+  });
+  it('shows Collections in Global and keeps the section when switching scope', async () => {
+    withWorkspaces();
+    pathname = '/global/collections';
+    render(<AppShell username="admin">x</AppShell>);
+    const sections = screen.getByRole('navigation', { name: 'Sections' });
+    expect(within(sections).getAllByRole('link').map((l) => [l.textContent, l.getAttribute('href')])).toEqual([
+      ['Overview', '/global/overview'],
+      ['Collections', '/global/collections'],
+      ['Settings', '/global/settings'],
+    ]);
+    expect(within(sections).getByRole('link', { name: 'Collections' })).toHaveAttribute('aria-current', 'page');
+    const scope = screen.getByRole('navigation', { name: 'Scope' });
+    expect(await within(scope).findByRole('link', { name: 'Alpha' })).toHaveAttribute('href', '/w/alpha/collections');
   });
   it('shows an error with retry when Workspaces fail to load', async () => {
     fetchMock.mockResolvedValueOnce(json({}, 500));
