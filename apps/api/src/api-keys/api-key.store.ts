@@ -157,6 +157,60 @@ export class ApiKeyStore {
     return ok && row ? toRecord(row) : null;
   }
 
+  /** All keys of a Workspace, newest first. */
+  async list(workspaceId: string): Promise<ApiKeyRecord[]> {
+    try {
+      const rows = await this.keys.find({ where: { workspaceId }, order: { createdAt: 'DESC', id: 'ASC' } });
+      return rows.map(toRecord);
+    } catch {
+      throw new ApiKeyStoreError('persistence_failed');
+    }
+  }
+
+  /** Edits name and/or permissions of a non-revoked key, looked up by Workspace AND key id. Never touches anything else. */
+  async update(
+    workspaceId: string,
+    id: string,
+    changes: { name?: string; permissions?: readonly Permission[] },
+  ): Promise<ApiKeyRecord | 'not_found' | 'revoked'> {
+    const permissions = changes.permissions === undefined ? undefined : parsePermissions([...changes.permissions]);
+    if (permissions === null || (permissions && permissions.length === 0)) throw new ApiKeyStoreError('invalid_permissions');
+    const set: Partial<Pick<ApiKey, 'name' | 'permissions'>> = {};
+    if (changes.name !== undefined) set.name = changes.name;
+    if (permissions) set.permissions = permissions;
+    try {
+      if (Object.keys(set).length > 0) {
+        await this.keys
+          .createQueryBuilder()
+          .update(ApiKey)
+          .set(set)
+          .where('id = :id AND workspace_id = :workspaceId AND revoked_at IS NULL', { id, workspaceId })
+          .execute();
+      }
+      const row = await this.keys.findOne({ where: { id, workspaceId } });
+      if (!row) return 'not_found';
+      return row.revokedAt ? 'revoked' : toRecord(row);
+    } catch {
+      throw new ApiKeyStoreError('persistence_failed');
+    }
+  }
+
+  /** Soft revoke by Workspace AND key id. Idempotent: an already revoked key keeps its original revocation time. */
+  async revoke(workspaceId: string, id: string): Promise<ApiKeyRecord | null> {
+    try {
+      await this.keys
+        .createQueryBuilder()
+        .update(ApiKey)
+        .set({ revokedAt: () => 'now()' })
+        .where('id = :id AND workspace_id = :workspaceId AND revoked_at IS NULL', { id, workspaceId })
+        .execute();
+      const row = await this.keys.findOne({ where: { id, workspaceId } });
+      return row ? toRecord(row) : null;
+    } catch {
+      throw new ApiKeyStoreError('persistence_failed');
+    }
+  }
+
   /**
    * Sets last_used_at to the database clock if it is unset or older than the throttle window. A single
    * conditional UPDATE: concurrent calls (also from other processes) serialize on the row lock and the
