@@ -75,7 +75,7 @@ export class FilesService {
       await this.emitUploaded({ id, scope });
       return dto;
     } catch (err) {
-      await this.discard(id, key);
+      await this.discard(id, key, scope);
       if (pgCode(err) === '23503') throw new NotFoundException('Not Found'); // Workspace removed meanwhile
       throw err;
     }
@@ -269,11 +269,18 @@ export class FilesService {
     }
   }
 
-  private async discard(id: string, key: string): Promise<void> {
+  private async discard(id: string, key: string, scope: ScopeRef): Promise<void> {
     try {
       await this.storage.delete(key);
     } catch (err) {
       this.logger.error(`Could not remove upload object for file ${id} (${err instanceof Error ? err.name : 'unknown'})`);
+      // Persist the key so the object is retried (also after a restart) instead of being orphaned.
+      try {
+        await this.cleanup.record(this.dataSource.manager, [{ storageKey: key, resourceType: 'file', resourceId: id, scopeKey: scopeKeyOf(scope) }]);
+        void this.cleanup.drain({ resourceId: id });
+      } catch {
+        // nothing more to do; the original error is what the caller sees
+      }
     }
   }
 
