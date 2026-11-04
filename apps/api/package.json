@@ -6,18 +6,28 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsc -p tsconfig.json && node dist/main.js",
-    "test": "vitest run"
+    "test": "vitest run",
+    "typeorm": "tsx node_modules/typeorm/cli.js",
+    "migration:run": "tsx node_modules/typeorm/cli.js migration:run -d src/database/data-source.ts",
+    "migration:revert": "tsx node_modules/typeorm/cli.js migration:revert -d src/database/data-source.ts",
+    "migration:generate": "tsx node_modules/typeorm/cli.js migration:generate -d src/database/data-source.ts",
+    "migration:create": "tsx node_modules/typeorm/cli.js migration:create"
   },
   "dependencies": {
     "@nestjs/common": "^12.3.2",
     "@nestjs/core": "^12.3.2",
     "@nestjs/event-emitter": "^12.0.1",
     "@nestjs/platform-express": "^12.3.2",
+    "@nestjs/typeorm": "^12.0.2",
+    "pg": "^8.23.1",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.2"
+    "rxjs": "^7.8.2",
+    "typeorm": "^1.1.2"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",
+    "@types/pg": "^8.23.1",
+    "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vitest": "^5.0.5"
   }
