@@ -1,5 +1,5 @@
-import { SettingsPlaceholder } from '@/components/settings-placeholder';
+import { GlobalSettingsView } from '@/components/global-settings-view';
 
 export default function Page() {
-  return <SettingsPlaceholder title="Global Settings" />;
+  return <GlobalSettingsView />;
 }

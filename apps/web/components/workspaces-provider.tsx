@@ -12,6 +12,8 @@ export type WorkspacesState =
 interface Ctx {
   state: WorkspacesState;
   reload: () => void;
+  /** Re-fetches the collection without a loading flash and resolves once the new data is in place. */
+  refresh: () => Promise<void>;
 }
 
 const WorkspacesContext = createContext<Ctx | null>(null);
@@ -23,6 +25,16 @@ export function WorkspacesProvider({ children }: { children: ReactNode }) {
   const reload = useCallback(() => {
     setState({ status: 'loading', workspaces: null });
     setTick((t) => t + 1);
+  }, []);
+
+  const refresh = useCallback(async () => {
+    try {
+      const res = await apiFetch('/api/global/workspaces');
+      if (!res.ok) throw new Error('failed');
+      setState({ status: 'ready', workspaces: (await res.json()) as WorkspaceDto[] });
+    } catch {
+      setState({ status: 'error', workspaces: null });
+    }
   }, []);
 
   useEffect(() => {
@@ -42,7 +54,7 @@ export function WorkspacesProvider({ children }: { children: ReactNode }) {
     };
   }, [tick]);
 
-  const value = useMemo(() => ({ state, reload }), [state, reload]);
+  const value = useMemo(() => ({ state, reload, refresh }), [state, reload, refresh]);
   return <WorkspacesContext.Provider value={value}>{children}</WorkspacesContext.Provider>;
 }
 
