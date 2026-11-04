@@ -17,6 +17,8 @@ export interface AppConfig {
   adminPasswordHash: string;
   /** HMAC key signing session cookies, at least 32 characters. Required; never logged. */
   sessionSecret: string;
+  /** Secret key (pepper) of the API-key HMAC, at least 32 characters. Required; never logged. Changing it invalidates every key. */
+  apiKeyPepper: string;
   /**
    * How many reverse-proxy hops to trust for the client IP (X-Forwarded-For). `false` (default)
    * trusts no forwarding header, so the socket address is used.
@@ -25,6 +27,7 @@ export interface AppConfig {
 }
 
 export const MIN_SESSION_SECRET_LENGTH = 32;
+export const MIN_API_KEY_PEPPER_LENGTH = 32;
 export const MAX_ADMIN_USERNAME_LENGTH = 128;
 
 const ARGON2ID_HASH_RE = /^\$argon2id\$v=\d+\$m=\d+,t=\d+,p=\d+\$[A-Za-z0-9+/]+\$[A-Za-z0-9+/]+$/;
@@ -146,6 +149,19 @@ export function loadConfig(env: EnvSource): AppConfig {
     sessionSecret = rawSecret;
   }
 
+  let apiKeyPepper = '';
+  const rawPepper = get('API_KEY_PEPPER');
+  if (rawPepper === undefined) {
+    problems.push({ variable: 'API_KEY_PEPPER', reason: 'is required' });
+  } else if (rawPepper.length < MIN_API_KEY_PEPPER_LENGTH) {
+    problems.push({
+      variable: 'API_KEY_PEPPER',
+      reason: `must be at least ${MIN_API_KEY_PEPPER_LENGTH} characters`,
+    });
+  } else {
+    apiKeyPepper = rawPepper;
+  }
+
   let trustProxy: false | number = false;
   const rawTrust = get('TRUST_PROXY');
   if (rawTrust !== undefined && rawTrust !== 'false') {
@@ -166,6 +182,7 @@ export function loadConfig(env: EnvSource): AppConfig {
     adminUsername,
     adminPasswordHash,
     sessionSecret,
+    apiKeyPepper,
     trustProxy,
   };
 }

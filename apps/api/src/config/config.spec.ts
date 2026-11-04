@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { TEST_ADMIN_ENV, TEST_ADMIN_PASSWORD_HASH, TEST_ADMIN_USERNAME, TEST_SESSION_SECRET } from '../../test/fixtures/admin.js';
+import { TEST_ADMIN_ENV, TEST_API_KEY_PEPPER, TEST_ADMIN_PASSWORD_HASH, TEST_ADMIN_USERNAME, TEST_SESSION_SECRET } from '../../test/fixtures/admin.js';
 import { ConfigError, loadConfig } from './app-config.js';
 
 const SENTINEL = 'sentinel-secret-9f3a';
@@ -25,6 +25,7 @@ describe('loadConfig', () => {
       adminUsername: TEST_ADMIN_USERNAME,
       adminPasswordHash: TEST_ADMIN_PASSWORD_HASH,
       sessionSecret: TEST_SESSION_SECRET,
+      apiKeyPepper: TEST_API_KEY_PEPPER,
       trustProxy: false,
     });
   });
@@ -52,7 +53,7 @@ describe('loadConfig', () => {
   it('names every missing admin variable without values', () => {
     const message = problemsOf({ DATABASE_URL: VALID.DATABASE_URL });
     expect(message).toBe(
-      'Invalid configuration: ADMIN_USERNAME (is required), ADMIN_PASSWORD_HASH (is required), SESSION_SECRET (is required)',
+      'Invalid configuration: ADMIN_USERNAME (is required), ADMIN_PASSWORD_HASH (is required), SESSION_SECRET (is required), API_KEY_PEPPER (is required)',
     );
   });
 
@@ -72,6 +73,16 @@ describe('loadConfig', () => {
     expect(message).toBe('Invalid configuration: SESSION_SECRET (must be at least 32 characters)');
     expect(message).not.toContain(short);
     expect(loadConfig({ ...VALID, SESSION_SECRET: 'x'.repeat(32) }).sessionSecret).toHaveLength(32);
+  });
+
+  it('rejects a missing or short API_KEY_PEPPER without echoing it', () => {
+    const { API_KEY_PEPPER: _omit, ...withoutPepper } = VALID;
+    expect(problemsOf(withoutPepper)).toBe('Invalid configuration: API_KEY_PEPPER (is required)');
+    const short = `${SENTINEL}`.padEnd(31, 'x');
+    const message = problemsOf({ ...VALID, API_KEY_PEPPER: short });
+    expect(message).toBe('Invalid configuration: API_KEY_PEPPER (must be at least 32 characters)');
+    expect(message).not.toContain(short);
+    expect(loadConfig({ ...VALID, API_KEY_PEPPER: 'p'.repeat(32) }).apiKeyPepper).toHaveLength(32);
   });
 
   it('rejects an overlong ADMIN_USERNAME', () => {
