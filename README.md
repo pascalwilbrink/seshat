@@ -5,8 +5,8 @@ knowledge, extract and index their content, keep persistent memories, retrieve r
 search, and expose controlled access through an API and MCP.
 
 > **Status: early foundation.** Present: Postgres persistence, Workspace management, single-admin login and a
-> login-protected web shell with scoped Overview and Settings pages. Files, Collections, Memories, Tags, API keys,
-> ingestion, search and MCP are planned. See [Status](#status).
+> login-protected web shell with scoped Overview, Settings and API Keys pages, and Workspace API keys with explicit
+> permissions. Files, Collections, Memories, Tags, ingestion, search and MCP are planned. See [Status](#status).
 
 ## Core concepts
 Global and Workspaces exist today; the other concepts below are planned.
@@ -41,11 +41,13 @@ Present:
 - A single admin with a signed session cookie, a default-deny global guard and a central authorization point.
 - The web app: same-origin `/api` proxy, login, a dark app shell with a scope switcher, and Overview and Settings
   pages for Global and each Workspace.
+- Workspace API keys: admin management (create, list, edit, revoke), bearer authentication and a shared permission
+  and action catalog (see [Workspace API keys](#workspace-api-keys)).
 - Gilde wiring: `.gilde.json`, `CLAUDE.md` and the skills sync workflow.
 
 Also present: CI (build and tests with required integration tests, see [CI](#ci)).
 
-Planned (does not exist yet): Files, Collections, Memories, Tags, API keys, ingestion, search, the MCP server, a
+Planned (does not exist yet): Files, Collections, Memories, Tags, ingestion, search, the MCP server, a
 release/deploy pipeline, and a Dockerfile. The target is one application container plus one Postgres database. There is
 no single Docker image today.
 
@@ -199,7 +201,8 @@ still has data is a `409` (restricting foreign key). A successful delete emits t
 - It validates input with strict schemas and leaks no secrets, hashes, cookies or protected existence information
   (`apps/api/test/sensitive-data.http.spec.ts`).
 
-API keys, Files, Collections, Memories, Tags, search and MCP are future work and are not implemented.
+Files, Collections, Memories, Tags, search and MCP are future work and are not implemented. No endpoint yet accepts
+an API key for resource access; keys can authenticate and call `GET /api/auth/me` only (see below).
 
 ### CI
 `.github/workflows/ci.yml` runs on every pull request and on pushes to `main`: a frozen `pnpm install`,
@@ -213,6 +216,106 @@ docker compose up -d db
 docker compose exec db createdb -U seshat seshat_test
 TEST_DATABASE_URL=postgres://seshat:seshat@localhost:5432/seshat_test REQUIRE_INTEGRATION_TESTS=true pnpm test
 ```
+
+## Workspace API keys
+A Workspace API key is a credential owned by exactly one Workspace, for agents and applications. It is managed by the
+admin and carries an explicit list of permissions. **Only key management, authentication and the authorization policy
+exist today.** The resource endpoints that will use keys (Files, Collections, Memories, Search) and the MCP server are
+not implemented, so a key can currently do nothing except identify itself with `GET /api/auth/me`.
+
+### Setup
+1. Generate a pepper and set it in `apps/api/.env` as `API_KEY_PEPPER` (required, at least 32 characters; the API
+   refuses to start without it, and the error never echoes the value):
+   ```sh
+   openssl rand -base64 48
+   ```
+   Keep it secret, out of Git and logs, and stable. It is the secret key of the HMAC-SHA-256 under which keys are stored.
+2. Apply the persistence migration that creates the `api_keys` table (`1762500000000-CreateApiKeys`). It runs at
+   startup when `DB_MIGRATE_ON_START` is true (default in development), otherwise run
+   `pnpm --filter @seshat/api migration:run`.
+3. Log in to the web app, open a Workspace and choose **API Keys** (`/w/<slug>/api-keys`). There is no Global key page.
+
+### Storage and ownership
+- A key looks like `sk_seshat_<8-character prefix>_<43-character secret>` (base62, from a CSPRNG).
+- The database stores only the prefix (for lookup and display) and the HMAC-SHA-256 of the full key under
+  `API_KEY_PEPPER`. The full key is never stored.
+- **Rotating the pepper invalidates every existing key** (their stored HMACs no longer match). Plan it as a deliberate
+  action and create new keys afterwards.
+- A key belongs to one Workspace and is deleted with it (`ON DELETE CASCADE`). Global has no keys.
+
+### Create, list, edit, revoke
+All routes need the admin session, are never cacheable (`Cache-Control: no-store`) and answer a missing, foreign or
+denied Workspace with the same `404`. A key can never call them.
+
+| Method and path | Purpose |
+| --- | --- |
+| `POST /api/workspaces/:workspaceId/api-keys` | Create. Body `{ name, permissions, expiresAt? }` (`expiresAt` optional, ISO 8601 in the future). Returns `{ apiKey, secret }`. |
+| `GET /api/workspaces/:workspaceId/api-keys` | List metadata: `id`, `name`, `prefix`, `permissions`, `createdAt`, `lastUsedAt`, `expiresAt`, `revokedAt`, `status`. |
+| `PATCH /api/workspaces/:workspaceId/api-keys/:keyId` | Edit `name` and/or `permissions`. Expiry cannot be changed; a revoked key is a `409`. |
+| `POST /api/workspaces/:workspaceId/api-keys/:keyId/revoke` | Revoke. Immediate and irreversible; repeating it keeps the original time. |
+
+- **The full key is returned once**, in the `secret` field of the create response. It cannot be retrieved later; if it
+  is lost, create a new key. The web page shows it once with a warning ("This is the only time the full key is
+  shown...") and a **Copy key** button.
+- Handle it as a password: store it in a secret manager or the agent's secret configuration, never in Git, chat,
+  tickets, screenshots or logs. Seshat never logs keys, HMACs or the pepper, and list, error and `auth/me` responses
+  never contain a secret or digest. Do not add such logging yourself.
+- **Rotation is create plus revoke**: create a replacement key, switch the client over, then revoke the old one. There
+  is no rotate endpoint.
+- Edits and revocation take effect on the next request. `lastUsedAt` is written at most once per 60 seconds per key,
+  and a failed write never fails the request.
+- Keys may have an optional expiry; an expired key stops authenticating and is shown as `expired`.
+
+### Bearer authentication
+Send `Authorization: Bearer <key>` over HTTPS (the scheme is case-insensitive, one space or tab, no other format; keys
+in query strings or bodies are not accepted). Unknown, malformed, wrong, revoked and expired keys all give the same
+generic `401 Unauthorized`; the digest comparison is constant-time. A request that carries **both** a bearer key and
+the admin session cookie is rejected with `400 Ambiguous credentials`, so use one credential per request.
+
+`GET /api/auth/me` returns, for a key, `{ "kind": "apiKey", "workspace": { "id", "slug", "name" }, "permissions": [...] }`
+and, for the admin, `{ "kind": "admin", "username" }`. It never returns the key id, prefix or digest.
+
+Example with throwaway placeholders (never put a real key in a document, shell history or script):
+```sh
+export SESHAT_KEY='<paste the key shown once at creation>'
+curl -sS -H "Authorization: Bearer $SESHAT_KEY" http://localhost:4200/api/auth/me
+```
+
+### Permissions
+There are exactly ten permissions, defined once in `packages/domain` (`src/permissions.ts`) and shared by the API and web:
+
+| Area | Permissions |
+| --- | --- |
+| Files | `files:read`, `files:write`, `files:delete` |
+| Collections | `collections:read`, `collections:write` |
+| Memories | `memories:read`, `memories:write`, `memories:delete` |
+| Search | `search` |
+| Global knowledge | `global:read` |
+
+Presets in the web form (they never include `global:read` or any delete permission):
+- **Agent: read** = `files:read`, `collections:read`, `memories:read`, `search`.
+- **Agent: read and write** = the read set plus `files:write`, `collections:write`, `memories:write`.
+
+Rules enforced by `AuthorizationService.assertCan`:
+- In its own Workspace a key needs the permission mapped to the action. A missing one is a `403` that names only the
+  permission (`Missing permission: files:read`), with no resource details.
+- Another Workspace gives exactly the same `404` as a Workspace that does not exist.
+- **Global is a dual grant, off by default.** A key can read Global only with `global:read` **and** the matching read
+  permission for the operation (for example `files:read`). `global:read` alone authorizes nothing. In the web form this
+  is the separate toggle "Allow reading Global `global:read`".
+- A key can never write, delete or manage anything in Global, never manage Workspaces, and never manage keys.
+
+### Extending the policy (for the future Files, Memories, Search and MCP work)
+- Add each new operation to `ACTION_CATALOG` in `packages/domain/src/actions.ts` with an explicit classification
+  (`read`, `write`, `delete`, `admin` or `self`) and, for the first three, its permission. There is no wildcard: an action
+  not in the catalog is denied. Entries marked "future" there have no endpoint yet.
+- Call `AuthorizationService.assertCan(principal, action, scope)` with an explicit `ScopeRef` before touching data. It
+  is the only policy point; `Principal` (`admin` or `apiKey`) is what the guard produces. Do not check permissions
+  anywhere else.
+- Extend the table-driven matrix in `apps/api/src/auth/authorization.matrix.spec.ts` and the HTTP and integration tests
+  in `apps/api/test/` (`api-key-auth`, `api-keys`, `route-coverage`, `sensitive-data`, `security`). Every new endpoint
+  needs: default-deny coverage, an own-Workspace allow and missing-permission `403`, a foreign-vs-missing Workspace test
+  that compares the two `404` responses byte for byte, Global tests for the dual grant, and revoked and expired keys.
 
 ## How Gilde uses Seshat *(planned)*
 Gilde attaches Seshat as a project MCP server using a Workspace API key. What an agent can read or write
