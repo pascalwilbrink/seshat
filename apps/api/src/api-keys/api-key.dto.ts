@@ -28,10 +28,8 @@ const expiresAt = z
 export const createApiKeySchema = z.strictObject({ name, permissions, expiresAt: expiresAt.optional() });
 export type CreateApiKeyInput = z.infer<typeof createApiKeySchema>;
 
-/** Only name and permissions are editable: not expiry, Workspace, prefix, digest or revocation state. */
-export const updateApiKeySchema = z
-  .strictObject({ name: name.optional(), permissions: permissions.optional() })
-  .refine((v) => v.name !== undefined || v.permissions !== undefined, { error: 'Provide name and/or permissions' });
+/** `PUT` body: name and permissions, both required; not expiry, Workspace, prefix, digest or revocation state. */
+export const updateApiKeySchema = z.strictObject({ name, permissions });
 export type UpdateApiKeyInput = z.infer<typeof updateApiKeySchema>;
 
 export type ApiKeyStatus = 'active' | 'revoked' | 'expired';

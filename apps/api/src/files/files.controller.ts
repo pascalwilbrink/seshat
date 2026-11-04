@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { pipeline } from 'node:stream';
-import { Body, Controller, Delete, Get, HttpCode, Inject, Param, Patch, Post, Query, Req, Res } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Inject, Param, Put, Post, Query, Req, Res } from '@nestjs/common';
 import { CurrentPrincipal } from '../auth/http.js';
 import type { Principal } from '../auth/principal.js';
 import { ZodValidationPipe } from '../common/zod-validation.pipe.js';
@@ -36,7 +36,7 @@ export class FilesController {
     return this.files.upload(principal, scope, req);
   }
 
-  @Patch('global/files/:fileId')
+  @Put('global/files/:fileId')
   updateGlobal(
     @CurrentPrincipal() principal: Principal,
     @Param('fileId') fileId: string,
@@ -45,7 +45,7 @@ export class FilesController {
     return this.files.update(principal, globalScope(), fileId, body);
   }
 
-  @Patch('workspaces/:workspaceId/files/:fileId')
+  @Put('workspaces/:workspaceId/files/:fileId')
   update(
     @CurrentPrincipal() principal: Principal,
     @Param('workspaceId', new WorkspaceScopePipe()) scope: ScopeRef,

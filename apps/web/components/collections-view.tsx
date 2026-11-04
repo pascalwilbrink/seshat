@@ -169,7 +169,7 @@ function CollectionsPanel({ base, label }: { base: string; label: string }) {
           initial={{ name: editing.name, description: editing.description ?? '' }}
           send={(v) =>
             apiFetch(`${base}/${encodeURIComponent(editing.id)}`, {
-              method: 'PATCH',
+              method: 'PUT',
               headers: { 'content-type': 'application/json' },
               body: JSON.stringify({ name: v.name, description: v.description || null }),
             })

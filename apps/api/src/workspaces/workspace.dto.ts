@@ -32,10 +32,8 @@ export const createWorkspaceSchema = z.strictObject({
 });
 export type CreateWorkspaceInput = z.infer<typeof createWorkspaceSchema>;
 
-/** Only name and description are updatable; the slug is fixed. */
-export const updateWorkspaceSchema = z
-  .strictObject({ name: name.optional(), description: description.optional() })
-  .refine((v) => v.name !== undefined || v.description !== undefined, { error: 'Provide name and/or description' });
+/** `PUT` body: the whole editable representation (name and description, null clears it); the slug is fixed. */
+export const updateWorkspaceSchema = z.strictObject({ name, description });
 export type UpdateWorkspaceInput = z.infer<typeof updateWorkspaceSchema>;
 
 export const deleteWorkspaceSchema = z.strictObject({

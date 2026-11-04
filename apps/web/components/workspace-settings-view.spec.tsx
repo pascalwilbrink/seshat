@@ -56,7 +56,7 @@ describe('Workspace Settings', () => {
   it('renames name and description without sending a slug, then refreshes and confirms', async () => {
     let list = [alpha];
     fetchMock.mockImplementation((_u: string, init?: RequestInit) => {
-      if (init?.method === 'PATCH') {
+      if (init?.method === 'PUT') {
         list = [{ ...alpha, name: 'Alpha 2', description: 'new' }];
         return Promise.resolve(json(list[0]));
       }
@@ -70,7 +70,7 @@ describe('Workspace Settings', () => {
     await userEvent.type(screen.getByLabelText('Description'), 'new');
     await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     expect(await screen.findByRole('status')).toHaveTextContent('Workspace saved');
-    const [url, init] = mutation('PATCH')!;
+    const [url, init] = mutation('PUT')!;
     expect(url).toBe('/api/workspaces/uuid-1');
     expect(JSON.parse(init.body)).toEqual({ name: 'Alpha 2', description: 'new' });
     expect(fetchMock.mock.calls.filter((c) => !c[1]?.method).length).toBe(2);
@@ -78,7 +78,7 @@ describe('Workspace Settings', () => {
   it('shows validation errors on the field and keeps the form usable', async () => {
     fetchMock.mockImplementation((_u: string, init?: RequestInit) =>
       Promise.resolve(
-        init?.method === 'PATCH'
+        init?.method === 'PUT'
           ? json({ message: 'Invalid request', issues: [{ path: 'name', message: 'Name must not be empty' }] }, 400)
           : json([alpha]),
       ),
@@ -93,7 +93,7 @@ describe('Workspace Settings', () => {
   });
   it('shows a safe error when saving fails', async () => {
     fetchMock.mockImplementation((_u: string, init?: RequestInit) =>
-      Promise.resolve(init?.method === 'PATCH' ? json({ message: 'stack trace' }, 500) : json([alpha])),
+      Promise.resolve(init?.method === 'PUT' ? json({ message: 'stack trace' }, 500) : json([alpha])),
     );
     view();
     await screen.findByLabelText('Name');
@@ -105,7 +105,7 @@ describe('Workspace Settings', () => {
   it('shows not found when the Workspace was deleted elsewhere (404 on save)', async () => {
     let list = [alpha];
     fetchMock.mockImplementation((_u: string, init?: RequestInit) => {
-      if (init?.method === 'PATCH') {
+      if (init?.method === 'PUT') {
         list = [];
         return Promise.resolve(json({ message: 'Not Found' }, 404));
       }
@@ -119,7 +119,7 @@ describe('Workspace Settings', () => {
   it('sends an expired session (401) to the shared login flow', async () => {
     const assign = vi.fn();
     vi.stubGlobal('location', { pathname: '/w/alpha/settings', search: '', assign });
-    fetchMock.mockImplementation((_u: string, init?: RequestInit) => Promise.resolve(init?.method === 'PATCH' ? json({}, 401) : json([alpha])));
+    fetchMock.mockImplementation((_u: string, init?: RequestInit) => Promise.resolve(init?.method === 'PUT' ? json({}, 401) : json([alpha])));
     view();
     await screen.findByLabelText('Name');
     await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));

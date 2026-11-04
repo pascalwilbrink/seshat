@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, Inject, Param, Patch } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Inject, Param, Put } from '@nestjs/common';
 import { CurrentPrincipal } from '../auth/http.js';
 import type { Principal } from '../auth/principal.js';
 import { ZodValidationPipe } from '../common/zod-validation.pipe.js';
@@ -17,7 +17,7 @@ export class TagsController {
     return this.tags.list(principal, globalScope());
   }
 
-  @Patch('global/tags/:tagId')
+  @Put('global/tags/:tagId')
   renameGlobal(
     @CurrentPrincipal() principal: Principal,
     @Param('tagId') tagId: string,
@@ -40,7 +40,7 @@ export class TagsController {
     return this.tags.list(principal, scope);
   }
 
-  @Patch('workspaces/:workspaceId/tags/:tagId')
+  @Put('workspaces/:workspaceId/tags/:tagId')
   renameWorkspace(
     @CurrentPrincipal() principal: Principal,
     @Param('workspaceId', new WorkspaceScopePipe()) scope: ScopeRef,

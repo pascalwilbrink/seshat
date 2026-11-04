@@ -181,7 +181,7 @@ describeIntegration('security over HTTP (real PostgreSQL)', () => {
       record(await app.http('GET', '/api/auth/me', { headers: { authorization: `Bearer ${secret}`, cookie: app.adminCookie } }));
       record(await app.http('POST', `/api/workspaces/${w.own.id}/api-keys`, { admin: true, body: { name: secret, permissions: [secret] } }));
       record(await app.http('POST', `/api/workspaces/${w.own.id}/api-keys`, { admin: true, body: `{"name":"${secret}"` }));
-      record(await app.http('PATCH', `/api/workspaces/${w.own.id}/api-keys/${apiKey.id}`, { admin: true, body: { name: 'renamed' } }));
+      record(await app.http('PUT', `/api/workspaces/${w.own.id}/api-keys/${apiKey.id}`, { admin: true, body: { name: 'renamed', permissions: ['search'] } }));
       record(await app.http('GET', `/api/workspaces/${w.own.id}/api-keys`, { admin: true }));
       // A key for a Workspace that does not exist: a foreign-key violation inside the driver.
       record(await app.http('POST', `/api/workspaces/${randomUUID()}/api-keys`, { admin: true, body: { name: 'n', permissions: ['search'] } }));

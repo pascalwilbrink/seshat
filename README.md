@@ -184,7 +184,7 @@ All require the admin session (`401` otherwise). Requests are strict JSON object
 | `GET /api/global/workspaces` | | `200` list ordered by name |
 | `POST /api/global/workspaces` | `{ name, slug?, description? }` | `201` Workspace; slug derived from the name when omitted |
 | `GET /api/workspaces/:workspaceId` | | `200` Workspace, `404` if missing or not allowed |
-| `PATCH /api/workspaces/:workspaceId` | `{ name?, description? }` (at least one) | `200` Workspace; the slug is fixed and cannot change |
+| `PUT /api/workspaces/:workspaceId` | `{ name, description }` (both required; `description: null` clears it) | `200` Workspace; the slug is fixed and cannot be sent; a missing field is a `400` naming it |
 | `DELETE /api/workspaces/:workspaceId` | `{ slug }` | `204`; `400` unless `slug` equals the Workspace's slug exactly |
 | `GET /api/global/overview`, `GET /api/workspaces/:workspaceId/overview` | | `200` scope summary |
 
@@ -251,7 +251,7 @@ denied Workspace with the same `404`. A key can never call them.
 | --- | --- |
 | `POST /api/workspaces/:workspaceId/api-keys` | Create. Body `{ name, permissions, expiresAt? }` (`expiresAt` optional, ISO 8601 in the future). Returns `{ apiKey, secret }`. |
 | `GET /api/workspaces/:workspaceId/api-keys` | List metadata: `id`, `name`, `prefix`, `permissions`, `createdAt`, `lastUsedAt`, `expiresAt`, `revokedAt`, `status`. |
-| `PATCH /api/workspaces/:workspaceId/api-keys/:keyId` | Edit `name` and/or `permissions`. Expiry cannot be changed; a revoked key is a `409`. |
+| `PUT /api/workspaces/:workspaceId/api-keys/:keyId` | Replace `name` and `permissions` (both required). Expiry cannot be changed; a revoked key is a `409`. |
 | `POST /api/workspaces/:workspaceId/api-keys/:keyId/revoke` | Revoke. Immediate and irreversible; repeating it keeps the original time. |
 
 - **The full key is returned once**, in the `secret` field of the create response. It cannot be retrieved later; if it

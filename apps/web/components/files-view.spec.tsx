@@ -119,7 +119,7 @@ function server(files: Record<string, FileDto[]>, extra: Partial<Server> = {}): 
       const hasMore = start + size < items.length;
       return json({ items: page, nextCursor: hasMore ? String(start + size) : null, hasMore, limit: size });
     }
-    if (method === 'PATCH') {
+    if (method === 'PUT') {
       const body = JSON.parse(String(init?.body));
       s.files[base] = all.map((f) => (f.id === id ? { ...f, ...body } : f));
       return json(s.files[base].find((f) => f.id === id));

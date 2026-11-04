@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Header, HttpCode, Inject, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Get, Header, HttpCode, Inject, Param, Put, Post } from '@nestjs/common';
 import { CurrentPrincipal } from '../auth/http.js';
 import type { Principal } from '../auth/principal.js';
 import { ZodValidationPipe } from '../common/zod-validation.pipe.js';
@@ -38,7 +38,7 @@ export class ApiKeysController {
     return this.keys.create(principal, scope, body);
   }
 
-  @Patch(':keyId')
+  @Put(':keyId')
   @Header('Cache-Control', 'no-store')
   update(
     @CurrentPrincipal() principal: Principal,

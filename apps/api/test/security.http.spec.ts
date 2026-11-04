@@ -86,9 +86,9 @@ describe('AC-10: credentials never reach logs, errors or unintended responses', 
     // Malformed management input, including the secret itself as input.
     record(await app.http('POST', `/api/workspaces/${w.own.id}/api-keys`, { admin: true, body: { name: secret, permissions: [secret] } }));
     record(await app.http('POST', `/api/workspaces/${w.own.id}/api-keys`, { admin: true, body: `{"name":"${sentinelKey}"` }));
-    record(await app.http('PATCH', `/api/workspaces/${w.own.id}/api-keys/${secret}`, { admin: true, body: { name: 'x' } }));
+    record(await app.http('PUT', `/api/workspaces/${w.own.id}/api-keys/${secret}`, { admin: true, body: { name: 'x', permissions: ['search'] } }));
     record(await app.http('GET', `/api/workspaces/${w.own.id}/api-keys`, { admin: true }));
-    record(await app.http('PATCH', `/api/workspaces/${w.own.id}/api-keys/${apiKey.id}`, { admin: true, body: { name: 'renamed' } }));
+    record(await app.http('PUT', `/api/workspaces/${w.own.id}/api-keys/${apiKey.id}`, { admin: true, body: { name: 'renamed', permissions: ['search'] } }));
     record(await app.http('POST', `/api/workspaces/${w.own.id}/api-keys/${apiKey.id}/revoke`, { admin: true }));
 
     // ORM / driver failures at the store boundary, with a sentinel in the raw driver message.
@@ -138,7 +138,7 @@ describe('AC-10: credentials never reach logs, errors or unintended responses', 
     const w = world;
     const created = JSON.parse((await w.app.http('POST', `/api/workspaces/${w.own.id}/api-keys`, { admin: true, body: { name: 'meta', permissions: ['search'] } })).text);
     const list = await w.app.http('GET', `/api/workspaces/${w.own.id}/api-keys`, { admin: true });
-    const edit = await w.app.http('PATCH', `/api/workspaces/${w.own.id}/api-keys/${created.apiKey.id}`, { admin: true, body: { name: 'meta2' } });
+    const edit = await w.app.http('PUT', `/api/workspaces/${w.own.id}/api-keys/${created.apiKey.id}`, { admin: true, body: { name: 'meta2', permissions: ['search'] } });
     const revoke = await w.app.http('POST', `/api/workspaces/${w.own.id}/api-keys/${created.apiKey.id}/revoke`, { admin: true });
     for (const r of [list, edit, revoke]) {
       expect(r.headers['cache-control']).toBe('no-store');

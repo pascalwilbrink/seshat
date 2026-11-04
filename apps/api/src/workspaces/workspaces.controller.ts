@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, Inject, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Inject, Param, Put, Post } from '@nestjs/common';
 import { CurrentPrincipal } from '../auth/http.js';
 import type { Principal } from '../auth/principal.js';
 import { ZodValidationPipe } from '../common/zod-validation.pipe.js';
@@ -41,7 +41,7 @@ export class WorkspacesController {
     return this.workspaces.get(principal, scope);
   }
 
-  @Patch('workspaces/:workspaceId')
+  @Put('workspaces/:workspaceId')
   update(
     @CurrentPrincipal() principal: Principal,
     @Param('workspaceId', new WorkspaceScopePipe()) scope: ScopeRef,

@@ -68,7 +68,7 @@ function fakeApi() {
     const row = m && rows.find((r) => r.id === m[1]);
     if (!m || !row) return json({ message: 'Not Found' }, 404);
     if (m[2]) return json({ scope: 'workspace', ...row });
-    if (method === 'PATCH') {
+    if (method === 'PUT') {
       Object.assign(row, { name: body.name, description: body.description || null });
       return json(row);
     }

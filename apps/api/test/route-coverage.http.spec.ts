@@ -52,14 +52,6 @@ const EXPECTED_ROUTES: string[] = [
   'GET /api/workspaces/:workspaceId/files/:fileId/download',
   'GET /api/workspaces/:workspaceId/overview',
   'GET /api/workspaces/:workspaceId/tags',
-  'PATCH /api/global/collections/:collectionId',
-  'PATCH /api/global/files/:fileId',
-  'PATCH /api/global/tags/:tagId',
-  'PATCH /api/workspaces/:workspaceId',
-  'PATCH /api/workspaces/:workspaceId/api-keys/:keyId',
-  'PATCH /api/workspaces/:workspaceId/collections/:collectionId',
-  'PATCH /api/workspaces/:workspaceId/files/:fileId',
-  'PATCH /api/workspaces/:workspaceId/tags/:tagId',
   'POST /api/auth/login',
   'POST /api/auth/logout',
   'POST /api/global/collections',
@@ -69,6 +61,14 @@ const EXPECTED_ROUTES: string[] = [
   'POST /api/workspaces/:workspaceId/api-keys/:keyId/revoke',
   'POST /api/workspaces/:workspaceId/collections',
   'POST /api/workspaces/:workspaceId/files',
+  'PUT /api/global/collections/:collectionId',
+  'PUT /api/global/files/:fileId',
+  'PUT /api/global/tags/:tagId',
+  'PUT /api/workspaces/:workspaceId',
+  'PUT /api/workspaces/:workspaceId/api-keys/:keyId',
+  'PUT /api/workspaces/:workspaceId/collections/:collectionId',
+  'PUT /api/workspaces/:workspaceId/files/:fileId',
+  'PUT /api/workspaces/:workspaceId/tags/:tagId',
 ];
 
 let app: INestApplication;
@@ -156,9 +156,9 @@ describe('default-deny route coverage', () => {
     // Key transport is create-only: every other key route is listed without a secret-bearing counterpart.
     expect(production.filter((r) => r.includes('/api-keys'))).toEqual([
       'GET /api/workspaces/:workspaceId/api-keys',
-      'PATCH /api/workspaces/:workspaceId/api-keys/:keyId',
       'POST /api/workspaces/:workspaceId/api-keys',
       'POST /api/workspaces/:workspaceId/api-keys/:keyId/revoke',
+      'PUT /api/workspaces/:workspaceId/api-keys/:keyId',
     ]);
     // No Global key-management route and no unauthenticated key route.
     expect(production.some((r) => r.includes('/global/') && r.includes('api-keys'))).toBe(false);
@@ -228,7 +228,7 @@ describe('default-deny route coverage', () => {
     const id = randomUUID();
     for (const [m, p] of [
       ['GET', `/api/workspaces/${id}`],
-      ['PATCH', `/api/workspaces/${id}`],
+      ['PUT', `/api/workspaces/${id}`],
       ['DELETE', `/api/workspaces/${id}`],
       ['GET', `/api/workspaces/${id}/overview`],
       ['GET', '/api/workspaces/not-a-uuid'],
