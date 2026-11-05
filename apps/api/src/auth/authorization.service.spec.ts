@@ -47,7 +47,7 @@ describe('AuthorizationService', () => {
 describe('AuthorizationService: API keys', () => {
   const OWN = '0b3d6f0e-6c2a-4a58-9f0e-3f1a2b3c4d5e';
   const OTHER = '7c1d2e3f-0000-4000-8000-000000000001';
-  const key = (permissions: readonly Permission[], workspaceId = OWN): Principal => ({ kind: 'apiKey', keyId: 'k1', workspaceId, permissions });
+  const key = (permissions: readonly Permission[], workspaceId = OWN): Principal => ({ kind: 'apiKey', keyId: 'k1', keyName: 'key one', workspaceId, permissions });
   const own = workspaceScope(OWN);
   const other = workspaceScope(OTHER);
   const catch_ = (fn: () => void): unknown => {

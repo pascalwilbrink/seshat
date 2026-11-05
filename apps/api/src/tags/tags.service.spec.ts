@@ -11,7 +11,7 @@ const WS = '3f1d2c4e-5a6b-4c7d-8e9f-0a1b2c3d4e5f';
 const OTHER = '9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d';
 const TAG = '11111111-2222-4333-8444-555555555555';
 
-const key = (workspaceId: string, ...permissions: Permission[]): Principal => ({ kind: 'apiKey', keyId: 'k', workspaceId, permissions });
+const key = (workspaceId: string, ...permissions: Permission[]): Principal => ({ kind: 'apiKey', keyId: 'k', keyName: 'key', workspaceId, permissions });
 
 function setup() {
   const query = vi.fn(async (_sql: string, _params?: unknown[]): Promise<unknown> => []);

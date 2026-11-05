@@ -15,7 +15,7 @@ import { globalScope, workspaceScope } from '../scopes/scope-ref.js';
 const OWN = '0b3d6f0e-6c2a-4a58-9f0e-3f1a2b3c4d5e';
 const OTHER = '7c1d2e3f-0000-4000-8000-000000000001';
 const service = new AuthorizationService();
-const keyWith = (permissions: readonly Permission[]): Principal => ({ kind: 'apiKey', keyId: 'k', workspaceId: OWN, permissions });
+const keyWith = (permissions: readonly Permission[]): Principal => ({ kind: 'apiKey', keyId: 'k', keyName: 'key', workspaceId: OWN, permissions });
 const scopes = { own: workspaceScope(OWN), other: workspaceScope(OTHER), global: globalScope() };
 
 /** Singleton, empty, full, and for each action the relevant missing-grant and dual-grant sets. */

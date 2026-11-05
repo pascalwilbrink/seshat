@@ -135,7 +135,7 @@ describe('bearer authentication over HTTP', () => {
       workspace: { id: app.ws.id, slug: 'acme', name: 'Acme' },
       permissions: ['files:read'],
     });
-    expect(res.text).not.toMatch(/GOOD|hmac|digest|prefix|AbCdEfGh|keyId/i);
+    expect(res.text).not.toMatch(/GOOD|hmac|digest|prefix|AbCdEfGh|keyId|keyName/i);
   });
 
   it('keeps the admin auth/me contract for a session cookie', async () => {

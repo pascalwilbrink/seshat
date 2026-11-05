@@ -10,6 +10,8 @@ export type AdminPrincipal = { kind: 'admin' };
 export type ApiKeyPrincipal = {
   kind: 'apiKey';
   keyId: string;
+  /** The key's name at authentication time; used only for server-side provenance snapshots, never exposed by auth/me. */
+  keyName: string;
   workspaceId: string;
   permissions: readonly Permission[];
 };

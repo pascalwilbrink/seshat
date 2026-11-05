@@ -13,7 +13,7 @@ function record(over: Partial<ApiKeyRecord> = {}): ApiKeyRecord {
   return {
     id: 'k1',
     workspaceId: WS,
-    name: 'n',
+    name: 'key one',
     prefix: 'AbCdEfGh',
     permissions: ['files:read'],
     createdAt: new Date(NOW),
@@ -40,7 +40,7 @@ describe('SessionGuard bearer authentication', () => {
   it('resolves a typed api key principal and touches last_used', async () => {
     const { run, keys } = setup(record({ permissions: ['files:read', 'global:read'] }));
     const { req } = await run('GET', '/api/auth/me', { authorization: `Bearer ${KEY}` });
-    expect(req.principal).toEqual({ kind: 'apiKey', keyId: 'k1', workspaceId: WS, permissions: ['files:read', 'global:read'] });
+    expect(req.principal).toEqual({ kind: 'apiKey', keyId: 'k1', keyName: 'key one', workspaceId: WS, permissions: ['files:read', 'global:read'] });
     expect(keys.findByKey).toHaveBeenCalledWith(KEY);
     expect(keys.touchLastUsed).toHaveBeenCalledWith('k1');
   });

@@ -229,7 +229,7 @@ describe('API key management (admin HTTP)', () => {
   });
 
   it('central policy rejects API-key principals for every management operation', async () => {
-    const key: Principal = { kind: 'apiKey', keyId: randomUUID(), workspaceId: ws, permissions: ['files:read', 'files:write', 'files:delete', 'search', 'global:read'] };
+    const key: Principal = { kind: 'apiKey', keyId: randomUUID(), keyName: 'key', workspaceId: ws, permissions: ['files:read', 'files:write', 'files:delete', 'search', 'global:read'] };
     const scope = workspaceScope(ws);
     const id = randomUUID();
     await expect(service.list(key, scope)).rejects.toThrow('Forbidden');
