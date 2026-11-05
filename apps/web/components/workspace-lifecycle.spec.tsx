@@ -106,7 +106,16 @@ describe('Workspace lifecycle through the shell and a same-origin API fixture', 
     fetchMock.mockImplementation(api.handler);
     nav.go('/global/settings');
     const first = render(<Page />);
-    const switcher = () => screen.getByRole('navigation', { name: 'Scope' });
+    // The scope dropdown lists Workspaces; open it, read the menu, close it again.
+    const listed = async (name: string) => {
+      await userEvent.click(screen.getByRole('button', { name: /^Scope:/ }));
+      const menu = await screen.findByRole('menu');
+      const item = within(menu).queryByRole('menuitem', { name });
+      return {
+        item,
+        close: () => userEvent.keyboard('{Escape}'),
+      };
+    };
 
     // Empty state, then create.
     expect(await screen.findByText(/No Workspaces yet\. Create your first/)).toBeInTheDocument();
@@ -116,7 +125,9 @@ describe('Workspace lifecycle through the shell and a same-origin API fixture', 
     // Lands on a valid scoped URL; the switcher already lists it.
     expect(await screen.findByRole('heading', { name: 'Acme Corp' })).toBeInTheDocument();
     expect(nav.path).toBe('/w/acme-corp/overview');
-    expect(within(switcher()).getByRole('link', { name: 'Acme Corp' })).toHaveAttribute('aria-current', 'page');
+    const acme = await listed('Acme Corp');
+    expect(acme.item).toHaveAttribute('aria-current', 'page');
+    await acme.close();
 
     // Direct reload of the scoped URL (fresh tree, no cached state) keeps the scope.
     first.unmount();
@@ -125,14 +136,18 @@ describe('Workspace lifecycle through the shell and a same-origin API fixture', 
     expect(nav.path).toBe('/w/acme-corp/overview');
 
     // Settings: slug is fixed, rename refreshes the switcher.
-    await userEvent.click(screen.getAllByRole('link', { name: 'Settings' }).at(-1)!);
+    await userEvent.click(within(screen.getByRole('navigation', { name: 'Sections' })).getByRole('link', { name: 'Settings' }));
     const name = await screen.findByLabelText('Name');
     expect(screen.getByLabelText('Slug')).toHaveAttribute('readonly');
     await userEvent.clear(name);
     await userEvent.type(name, 'Acme Inc');
     await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     expect(await screen.findByRole('status')).toHaveTextContent('Workspace saved');
-    expect(await within(switcher()).findByRole('link', { name: 'Acme Inc' })).toBeInTheDocument();
+    await vi.waitFor(async () => {
+      const renamed = await listed('Acme Inc');
+      expect(renamed.item).not.toBeNull();
+      await renamed.close();
+    });
     expect(nav.path).toBe('/w/acme-corp/settings');
 
     // Delete needs the exact slug; the active Workspace disappears and we land in Global.
@@ -140,7 +155,11 @@ describe('Workspace lifecycle through the shell and a same-origin API fixture', 
     await userEvent.click(screen.getByRole('button', { name: 'Delete Workspace' }));
     expect(await screen.findByRole('heading', { name: 'Global' })).toBeInTheDocument();
     expect(nav.path).toBe('/global/overview');
-    await vi.waitFor(() => expect(within(switcher()).queryByRole('link', { name: 'Acme Inc' })).not.toBeInTheDocument());
+    await vi.waitFor(async () => {
+      const gone = await listed('Acme Inc');
+      expect(gone.item).toBeNull();
+      await gone.close();
+    });
     expect(await screen.findByRole('link', { name: 'Create your first Workspace' })).toBeInTheDocument();
 
     // The deleted Workspace's URL is now not found, with no stale data.

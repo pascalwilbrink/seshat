@@ -86,7 +86,7 @@ export function GlobalSettingsView() {
         </ul>
       )}
 
-      <h2>Create Workspace</h2>
+      <h2 id="create-workspace" tabIndex={-1}>Create Workspace</h2>
       <form onSubmit={onSubmit} aria-busy={pending} noValidate className="form">
         <FormField id="ws-name" label="Name" error={fe.name}>
           {(p) => <input {...p} name="name" type="text" required maxLength={100} disabled={pending} />}
