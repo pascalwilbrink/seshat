@@ -132,7 +132,7 @@ export class RetrievalService {
     }
   }
 
-  private vectorVersion(m: EntityManager): Promise<string | null> {
+  vectorVersion(m: EntityManager): Promise<string | null> {
     this.extVersion ??= this.repo.vectorExtensionVersion(m).catch((err) => {
       this.extVersion = undefined;
       throw err;

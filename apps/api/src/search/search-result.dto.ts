@@ -134,3 +134,17 @@ export function toMemorySearchResult(s: MemoryResultSource): MemorySearchResult 
     updatedAt: new Date(s.updatedAt).toISOString(),
   };
 }
+
+/** A Memory near a seed. Like a search result, minus fusion ranks, plus the real cosine distance (0 = identical direction). */
+export type RelatedMemoryResult = Omit<MemorySearchResult, 'score' | 'vectorRank' | 'keywordRank'> & { distance: number };
+
+/** Nearest Memories, nearest first. No totals, no vectors; empty for a seed without an embedding. */
+export interface RelatedResponse {
+  results: RelatedMemoryResult[];
+}
+
+export function toRelatedMemoryResult(s: Omit<MemoryResultSource, keyof FusedScores> & { distance: number }): RelatedMemoryResult {
+  const { distance, ...source } = s;
+  const { score: _score, vectorRank: _v, keywordRank: _k, ...rest } = toMemorySearchResult({ ...source, score: 0, vectorRank: null, keywordRank: null });
+  return { ...rest, distance };
+}

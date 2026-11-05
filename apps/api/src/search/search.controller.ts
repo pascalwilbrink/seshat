@@ -1,9 +1,16 @@
-import { Body, Controller, Header, HttpCode, Inject, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, Header, HttpCode, Inject, Param, Post, Query } from '@nestjs/common';
 import { CurrentPrincipal } from '../auth/http.js';
 import type { Principal } from '../auth/principal.js';
 import { ZodValidationPipe } from '../common/zod-validation.pipe.js';
 import { WorkspaceScopePipe } from '../scopes/scope-params.pipe.js';
 import { type ScopeRef, globalScope } from '../scopes/scope-ref.js';
+import { RelatedMemoriesService } from './related.service.js';
+import {
+  type GlobalRelatedQuery,
+  type WorkspaceRelatedQuery,
+  globalRelatedQuerySchema,
+  workspaceRelatedQuerySchema,
+} from './related-request.dto.js';
 import { type ContextResponse, SearchService } from './search.service.js';
 import {
   type GlobalContextRequest,
@@ -15,7 +22,7 @@ import {
   globalSearchRequestSchema,
   workspaceSearchRequestSchema,
 } from './search-request.dto.js';
-import type { SearchResponse } from './search-result.dto.js';
+import type { RelatedResponse, SearchResponse } from './search-result.dto.js';
 
 /**
  * `POST .../search` and `POST .../context` (global and per Workspace). Read-only (POST carries the filter body),
@@ -23,7 +30,31 @@ import type { SearchResponse } from './search-result.dto.js';
  */
 @Controller()
 export class SearchController {
-  constructor(@Inject(SearchService) private readonly search: SearchService) {}
+  constructor(
+    @Inject(SearchService) private readonly search: SearchService,
+    @Inject(RelatedMemoriesService) private readonly related: RelatedMemoriesService,
+  ) {}
+
+  @Get('global/memories/:memoryId/related')
+  @Header('Cache-Control', 'no-store')
+  relatedGlobal(
+    @CurrentPrincipal() principal: Principal,
+    @Param('memoryId') memoryId: string,
+    @Query(new ZodValidationPipe(globalRelatedQuerySchema)) query: GlobalRelatedQuery,
+  ): Promise<RelatedResponse> {
+    return this.related.related(principal, globalScope(), memoryId, query);
+  }
+
+  @Get('workspaces/:workspaceId/memories/:memoryId/related')
+  @Header('Cache-Control', 'no-store')
+  relatedWorkspace(
+    @CurrentPrincipal() principal: Principal,
+    @Param('workspaceId', new WorkspaceScopePipe()) scope: ScopeRef,
+    @Param('memoryId') memoryId: string,
+    @Query(new ZodValidationPipe(workspaceRelatedQuerySchema)) query: WorkspaceRelatedQuery,
+  ): Promise<RelatedResponse> {
+    return this.related.related(principal, scope, memoryId, query);
+  }
 
   @Post('global/search')
   @HttpCode(200)
