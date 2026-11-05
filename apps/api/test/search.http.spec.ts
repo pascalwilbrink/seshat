@@ -19,6 +19,7 @@ import { ConfigModule } from '../src/config/config.module.js';
 import { FakeEmbeddingService } from '../src/ingestion/fake-embedding.service.js';
 import { EMBEDDING_SERVICE } from '../src/ingestion/embedding.service.js';
 import { RetrievalService } from '../src/search/retrieval.service.js';
+import { RelatedMemoriesService } from '../src/search/related.service.js';
 import { SearchController } from '../src/search/search.controller.js';
 import { SearchService } from '../src/search/search.service.js';
 import type { SearchResponse } from '../src/search/search-result.dto.js';
@@ -63,6 +64,7 @@ beforeAll(async () => {
       { provide: getDataSourceToken(), useValue: dataSource },
       { provide: RetrievalService, useValue: retrieval },
       SearchService,
+      { provide: RelatedMemoriesService, useValue: { related: vi.fn() } },
     ],
   })
   class Root {}
@@ -260,7 +262,7 @@ describe('POST search: embedding provider failure (real RetrievalService)', () =
         { provide: CLOCK, useValue: systemClock }, AuthService, LoginRateLimiter, SessionGuard,
         { provide: APP_GUARD, useExisting: SessionGuard }, { provide: APP_FILTER, useClass: SanitizedExceptionFilter },
         { provide: ApiKeyStore, useValue: keys }, AuthorizationService, { provide: getDataSourceToken(), useValue: ds },
-        { provide: EMBEDDING_SERVICE, useValue: fake }, RetrievalService, SearchService,
+        { provide: EMBEDDING_SERVICE, useValue: fake }, RetrievalService, SearchService, { provide: RelatedMemoriesService, useValue: { related: vi.fn() } },
       ],
     })
     class Real {}

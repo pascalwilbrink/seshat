@@ -139,6 +139,39 @@ export class RetrievalRepository {
     return ((await m.query(sql, p.values)) as { id: string }[]).map((r) => r.id);
   }
 
+  /**
+   * The stored vector of a seed Memory, looked up in exactly the given scope (the route scope, never an expanded one).
+   * `null` result: no such Memory in that scope. `vector: null`: it exists but has no embedding.
+   */
+  async loadSeedVector(m: EntityManager, scope: QueryScope, seedId: string): Promise<{ id: string; vector: string | null } | null> {
+    const rows = (await m.query(
+      `SELECT m."id", m."embedding"::text AS vector FROM "memories" m WHERE m."id" = $1::uuid AND m."scope_key" = ANY($2::text[])`,
+      [seedId, scope.scopeKeys],
+    )) as { id: string; vector: string | null }[];
+    return rows[0] ?? null;
+  }
+
+  /**
+   * Nearest active, embedded Memories to a seed vector (pgvector text literal read from the database), by cosine
+   * distance with id as tie-breaker. Scope, type, active, embedded and not-self predicates sit in WHERE.
+   */
+  async nearestMemories(
+    m: EntityManager,
+    input: { scope: QueryScope; seedId: string; vector: string; types: readonly string[] | null; limit: number; exact: boolean },
+  ): Promise<{ id: string; distance: number }[]> {
+    const p = new Params();
+    const v = p.add(input.vector);
+    const where = [`m."scope_key" = ANY(${p.add(input.scope.scopeKeys)}::text[])`, `m."status" = 'active'`, `m."embedding" IS NOT NULL`, `m."id" <> ${p.add(input.seedId)}::uuid`];
+    if (input.types) where.push(`m."type" = ANY(${p.add(input.types)}::text[])`);
+    const dist = input.exact ? `(m."embedding" <=> ${v}::vector) + 0` : `m."embedding" <=> ${v}::vector`;
+    const rows = (await m.query(
+      `SELECT m."id" AS id, (m."embedding" <=> ${v}::vector) AS distance FROM "memories" m WHERE ${where.join(' AND ')}
+        ORDER BY ${dist} ASC, m."id" ASC LIMIT ${p.add(input.limit)}`,
+      p.values,
+    )) as { id: string; distance: number | string }[];
+    return rows.map((r) => ({ id: r.id, distance: Number(r.distance) }));
+  }
+
   /** Loads display fields of the final, already-fused chunk ids; scope and indexed state are enforced again. */
   async loadChunks(m: EntityManager, scope: QueryScope, ids: readonly string[]): Promise<Map<string, Omit<ChunkResultSource, 'score' | 'vectorRank' | 'keywordRank'>>> {
     const out = new Map<string, Omit<ChunkResultSource, 'score' | 'vectorRank' | 'keywordRank'>>();

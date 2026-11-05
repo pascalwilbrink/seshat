@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module.js';
 import { IngestionModule } from '../ingestion/ingestion.module.js';
 import { RetrievalService } from './retrieval.service.js';
+import { RelatedMemoriesService } from './related.service.js';
 import { SearchController } from './search.controller.js';
 import { SearchService } from './search.service.js';
 
@@ -9,7 +10,7 @@ import { SearchService } from './search.service.js';
 @Module({
   imports: [AuthModule, IngestionModule],
   controllers: [SearchController],
-  providers: [RetrievalService, SearchService],
-  exports: [RetrievalService, SearchService],
+  providers: [RetrievalService, SearchService, RelatedMemoriesService],
+  exports: [RetrievalService, SearchService, RelatedMemoriesService],
 })
 export class SearchModule {}
