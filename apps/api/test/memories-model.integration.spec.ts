@@ -83,14 +83,14 @@ describeIntegration('Memories model (real PostgreSQL with pgvector)', () => {
       `SELECT format_type(a.atttypid, a.atttypmod) AS type, a.attnotnull FROM pg_attribute a
        WHERE a.attrelid = '"${iso.schema}"."memories"'::regclass AND a.attname = 'embedding'`,
     );
-    expect(col[0]?.type).toBe('vector(1536)');
+    expect(col[0]?.type).toMatch(/(^|\.)vector\(1536\)$/);
     expect(col[0]?.attnotnull).toBe(false);
     const idx = Object.fromEntries(
       (await iso.query(`SELECT indexname, indexdef FROM pg_indexes WHERE schemaname = '${iso.schema}' AND tablename = 'memories'`)).map((i) => [i.indexname, i.indexdef as string]),
     );
     expect(idx.UQ_memories_active_scope_key_type_content_hash).toMatch(/UNIQUE.*\(scope_key, type, content_hash\).*WHERE.*status.*active/);
     expect(idx.IDX_memories_scope_key_created_at_id).toMatch(/\(scope_key, created_at DESC, id DESC\)/);
-    expect(idx.IDX_memories_embedding_hnsw).toMatch(/USING hnsw \(embedding vector_cosine_ops\)/);
+    expect(idx.IDX_memories_embedding_hnsw).toMatch(/USING hnsw \(embedding (\w+\.)?vector_cosine_ops\)/);
     const mt = await iso.query(`SELECT conname FROM pg_constraint WHERE conrelid = '"${iso.schema}"."memory_tags"'::regclass AND contype = 'f' ORDER BY conname`);
     expect(mt.map((c) => c.conname)).toEqual(['FK_memory_tags_memory_scope', 'FK_memory_tags_tag_scope']);
   });
@@ -189,7 +189,7 @@ describeIntegration('Memories model (real PostgreSQL with pgvector)', () => {
     await supersede(old, next);
     await add(wsA, { content: 'versioned' }); // old is no longer active
     await rejects(add(wsA, { content: 'versioned v2' }), '23505', 'UQ_memories_active_scope_key_type_content_hash');
-    await rejects(ds.query(`UPDATE memories SET status = 'active' WHERE id = $1`, [old]), '23505', 'UQ_memories_active_scope_key_type_content_hash');
+    await rejects(ds.query(`UPDATE memories SET status = 'active', superseded_by = NULL WHERE id = $1`, [old]), '23505', 'UQ_memories_active_scope_key_type_content_hash');
   });
 
   it('enforces same-scope successors, no self-links and no link on an active record', async () => {

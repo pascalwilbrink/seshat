@@ -69,13 +69,15 @@ export class CreateMemories1762900000000 implements MigrationInterface {
       CONSTRAINT "CK_memories_embedding_ready_consistency" CHECK (("embedding_status" = 'ready') = ("embedding" IS NOT NULL AND "embedding_model" IS NOT NULL)),
       CONSTRAINT "FK_memories_superseded_by_scope" FOREIGN KEY ("superseded_by", "scope_key") REFERENCES "memories"("id", "scope_key") ON DELETE NO ACTION ON UPDATE RESTRICT
     )`);
+    // AFTER DELETE (a BEFORE trigger cannot update rows deleted by the same statement); the name sorts before the
+    // FK's RI_ConstraintTrigger_* so the links are cleared before the NO ACTION check runs.
     await queryRunner.query(`CREATE FUNCTION "fn_memories_clear_incoming_links"() RETURNS trigger LANGUAGE plpgsql AS $$
       BEGIN
         UPDATE "memories" SET "superseded_by" = NULL WHERE "superseded_by" = OLD."id";
         RETURN OLD;
       END $$`);
     await queryRunner.query(
-      'CREATE TRIGGER "TR_memories_clear_incoming_links" BEFORE DELETE ON "memories" FOR EACH ROW EXECUTE FUNCTION "fn_memories_clear_incoming_links"()',
+      'CREATE TRIGGER "AA_memories_clear_incoming_links" AFTER DELETE ON "memories" FOR EACH ROW EXECUTE FUNCTION "fn_memories_clear_incoming_links"()',
     );
     await queryRunner.query('CREATE INDEX "IDX_memories_scope_workspace_id" ON "memories" ("scope", "workspace_id")');
     await queryRunner.query(
@@ -102,7 +104,7 @@ export class CreateMemories1762900000000 implements MigrationInterface {
 
   public async down(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query('DROP TABLE "memory_tags"');
-    await queryRunner.query('DROP TRIGGER "TR_memories_clear_incoming_links" ON "memories"');
+    await queryRunner.query('DROP TRIGGER "AA_memories_clear_incoming_links" ON "memories"');
     await queryRunner.query('DROP FUNCTION "fn_memories_clear_incoming_links"()');
     await queryRunner.query('DROP TABLE "memories"');
   }

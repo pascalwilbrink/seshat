@@ -37,6 +37,7 @@ describeIntegration('migrations (real PostgreSQL)', () => {
       'CreateFilesCollectionsTags1762600000000',
       'CreateStorageCleanupIntents1762700000000',
       'CreateChunks1762800000000',
+      'CreateMemories1762900000000',
     ]);
   });
 
@@ -50,6 +51,7 @@ describeIntegration('migrations (real PostgreSQL)', () => {
       'CreateFilesCollectionsTags1762600000000',
       'CreateStorageCleanupIntents1762700000000',
       'CreateChunks1762800000000',
+      'CreateMemories1762900000000',
     ]);
     expect(await vectorInstalled()).toBe(true);
 
