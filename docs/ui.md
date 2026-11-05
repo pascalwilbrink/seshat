@@ -44,7 +44,7 @@ Only these pairings are verified by `apps/web/app/globals.css.spec.ts` (WCAG AA,
 
 - `foreground` on `background` and `surface`; `muted-foreground` on `background`, `surface` and `muted`; `popover-foreground` on `popover`.
 - Each `*-foreground` on its own fill: `primary`, `destructive`, `success`, `warning`, `info`, `accent`.
-- `primary` text on `background`, and `destructive` text on `surface`.
+- `primary` text on `background` only (it is 4.4:1 on `surface`, so links inside cards, tables and other surfaces use `text-foreground underline`), and `destructive` text on `surface`.
 - `input` and `ring` against `background` (3:1).
 
 Do not put `muted-foreground` text on `primary`, and do not invent a new pairing (for example `success` text on `muted`) without adding it to the spec first. After changing a token, rerun the spec.

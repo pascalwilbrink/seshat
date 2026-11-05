@@ -95,7 +95,7 @@ export function GlobalSettingsView() {
                 <li key={w.id} className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 px-2 py-2 text-sm">
                   <Link
                     href={scopeHref({ kind: 'workspace', slug: w.slug }, 'overview')}
-                    className="min-w-0 break-words font-medium text-primary underline-offset-4 hover:underline"
+                    className="min-w-0 break-words font-medium text-foreground underline underline-offset-4 hover:no-underline"
                   >
                     {w.name}
                   </Link>

@@ -322,7 +322,7 @@ function FilesPanel({ base, label }: { base: string; label: string }) {
                   <TableCell>{f.ingestionStatus}</TableCell>
                   <TableCell>{formatDate(f.createdAt)}</TableCell>
                   <TableCell>
-                    <a className="rounded-sm text-primary underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-ring" href={`${filesBase}/${encodeURIComponent(f.id)}/download`} download>
+                    <a className="rounded-sm text-foreground underline underline-offset-4 hover:no-underline focus-visible:outline-2 focus-visible:outline-ring" href={`${filesBase}/${encodeURIComponent(f.id)}/download`} download>
                       Download<span className="sr-only"> {f.name}</span>
                     </a>{' '}
                     <Button type="button" variant="link" size="sm" className="h-auto px-0" onClick={() => setSelected(f.id)}>

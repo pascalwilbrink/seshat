@@ -35,6 +35,11 @@ describe('theme tokens', () => {
     expect(contrast(tokens[t]!, tokens.background!)).toBeGreaterThanOrEqual(3);
   });
 
+  it('primary text is only AA on the page background, not on surface (found by the browser axe run)', () => {
+    expect(contrast(tokens.primary!, tokens.background!)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(tokens.primary!, tokens.surface!)).toBeLessThan(4.5);
+  });
+
   it('white text on the primary would fail, so primary text is dark', () => {
     expect(contrast('#ffffff', tokens.primary!)).toBeLessThan(4.5);
   });

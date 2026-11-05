@@ -57,7 +57,7 @@ export function LoginView({ next }: { next?: string }) {
             </span>
             Seshat
           </p>
-          <CardTitle className="text-xl">Log in to Seshat</CardTitle>
+          <CardTitle as="h1" className="text-xl">Log in to Seshat</CardTitle>
           <CardDescription>Use the admin credentials for this instance.</CardDescription>
         </CardHeader>
         <CardContent>
