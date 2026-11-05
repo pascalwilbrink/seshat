@@ -17,6 +17,7 @@ const bigintAsNumber = { to: (v: number) => v, from: (v: string | number) => Num
 @Check('CK_files_extension_format', `"extension" IS NULL OR "extension" ~ '^[a-z0-9]{1,32}$'`)
 @Check('CK_files_size_bytes', '"size_bytes" >= 0')
 @Check('CK_files_sha256_format', `"sha256" ~ '^[0-9a-f]{64}$'`)
+@Check('CK_files_chunk_count', '"chunk_count" >= 0')
 @Check('CK_files_ingestion_status', `"ingestion_status" IN ('pending', 'processing', 'indexed', 'failed')`)
 @Unique('UQ_files_id_scope_key', ['id', 'scopeKey'])
 @Unique('UQ_files_storage_key', ['storageKey'])
@@ -66,6 +67,14 @@ export class FileRecord extends ScopedEntity {
 
   @Column({ name: 'ingestion_error', type: 'text', nullable: true })
   ingestionError!: string | null;
+
+  /** When the file last reached `indexed`; null until then. */
+  @Column({ name: 'indexed_at', type: 'timestamp with time zone', nullable: true })
+  indexedAt!: Date | null;
+
+  /** Number of chunks currently stored for this file. */
+  @Column({ name: 'chunk_count', type: 'integer', default: 0 })
+  chunkCount!: number;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamp with time zone' })
   createdAt!: Date;

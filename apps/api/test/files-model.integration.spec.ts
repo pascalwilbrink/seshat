@@ -378,27 +378,22 @@ describeIntegration('Files, Collections and Tags model (real PostgreSQL)', () =>
 
   describe('migration down', () => {
     it('reverts cleanly and applies again', async () => {
-      const own = iso.createDataSource([]);
-      await own.initialize();
-      // A fresh schema: up everything, down the newest, up again.
-      const fresh = await createIsolatedSchema();
+      // Runs on the suite's own schema (it ends the file): the vector extension cannot be dropped while chunks exists.
+      const d = iso.createDataSource([]);
+      await d.initialize();
       try {
-        const d = fresh.createDataSource([]);
-        await d.initialize();
-        await fresh.query('DROP EXTENSION IF EXISTS vector');
-        await d.runMigrations({ transaction: 'each' });
         const tables = async () =>
-          (await fresh.query(`SELECT table_name FROM information_schema.tables WHERE table_schema = '${fresh.schema}' ORDER BY table_name`)).map((t) => t.table_name);
-        expect(await tables()).toEqual(expect.arrayContaining(['collections', 'file_tags', 'files', 'tags']));
+          (await iso.query(`SELECT table_name FROM information_schema.tables WHERE table_schema = '${iso.schema}' ORDER BY table_name`)).map((t) => t.table_name);
+        expect(await tables()).toEqual(expect.arrayContaining(['chunks', 'collections', 'file_tags', 'files', 'tags']));
+        await d.undoLastMigration({ transaction: 'each' }); // chunks
         await d.undoLastMigration({ transaction: 'each' }); // storage cleanup ledger
         await d.undoLastMigration({ transaction: 'each' });
         const after = await tables();
-        for (const t of ['collections', 'file_tags', 'files', 'tags']) expect(after).not.toContain(t);
+        for (const t of ['chunks', 'collections', 'file_tags', 'files', 'tags']) expect(after).not.toContain(t);
         expect(after).toContain('workspaces');
-        expect(await d.runMigrations({ transaction: 'each' })).toHaveLength(2);
+        expect(await d.runMigrations({ transaction: 'each' })).toHaveLength(3);
       } finally {
-        await fresh.dispose();
-        await own.destroy();
+        await d.destroy();
       }
     });
   });

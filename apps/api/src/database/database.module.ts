@@ -18,7 +18,10 @@ import { dataSource } from './data-source.js';
         retryDelay: 1000,
       }),
       dataSourceFactory: () =>
-        initializeDatabase(dataSource, { migrateOnStart: getAppConfig().dbMigrateOnStart }),
+        initializeDatabase(dataSource, {
+          migrateOnStart: getAppConfig().dbMigrateOnStart,
+          embeddingDimension: getAppConfig().embeddingDimension,
+        }),
     }),
   ],
 })

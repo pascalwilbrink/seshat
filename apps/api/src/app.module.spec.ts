@@ -103,7 +103,7 @@ describe('database wiring', () => {
       const { AppModule } = await import('./app.module.js');
       const { dataSource } = await import('./database/data-source.js');
       const ctx = await NestFactory.createApplicationContext(AppModule, { logger: false, abortOnError: false });
-      expect(initializeDatabase).toHaveBeenCalledWith(dataSource, { migrateOnStart: expected });
+      expect(initializeDatabase).toHaveBeenCalledWith(dataSource, { migrateOnStart: expected, embeddingDimension: 1536 });
       expect(ctx.get(DataSource)).toBe(dataSource);
       await ctx.close();
     }
