@@ -60,8 +60,41 @@ export interface FileDto {
   collectionId: string | null;
   tags: string[];
   ingestionStatus: IngestionStatus;
+  /** Allowlisted, fixed failure text of the last ingestion; null otherwise. */
+  ingestionError: string | null;
+  /** When the file last reached `indexed`; null until then. */
+  indexedAt: string | null;
+  /** Number of chunks stored for the file. */
+  chunkCount: number;
   createdAt: string;
   updatedAt: string;
+}
+
+/** Where a chunk sits in its original. Embeddings are never part of the API response. */
+export interface ChunkLocationDto {
+  section?: string;
+  headingPath?: string[];
+  startOffset: number;
+  endOffset: number;
+  startLine: number;
+  endLine: number;
+  page?: number;
+}
+
+export interface ChunkDto {
+  id: string;
+  fileId: string;
+  ordinal: number;
+  content: string;
+  charCount: number;
+  location: ChunkLocationDto;
+}
+
+export interface ChunkPageDto {
+  items: ChunkDto[];
+  nextCursor: string | null;
+  hasMore: boolean;
+  limit: number;
 }
 
 export interface FilePageDto {
