@@ -44,4 +44,11 @@ describe('theme tokens', () => {
     expect(css).not.toMatch(/prefers-color-scheme|color-scheme:\s*light/);
     expect(css.replace(root, '')).not.toMatch(/#[0-9a-f]{3,8}\b/i);
   });
+
+  it('contains only Tailwind integration, tokens and the base layer (no handwritten component classes)', () => {
+    expect(css).not.toMatch(/@layer legacy/);
+    const withoutBlocks = css.replace(/\/\*[\s\S]*?\*\//g, '');
+    const selectors = [...withoutBlocks.matchAll(/(?:^|})\s*([.#][\w-]+)[^{}]*{/gm)].map((m) => m[1]);
+    expect(selectors).toEqual([]);
+  });
 });

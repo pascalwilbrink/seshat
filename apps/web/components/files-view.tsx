@@ -18,6 +18,11 @@ import { GLOBAL_OVERVIEW_PATH, type Scope } from '@/lib/scope';
 import { FileDetail } from './file-detail';
 import { FileUploader } from './file-uploader';
 import { useWorkspaces } from './workspaces-provider';
+import { Button } from '@/components/ui/button';
+import { Select } from '@/components/ui/select';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 const NETWORK = 'Could not reach the server. Check your connection and try again.';
 const SESSION = 'Your session has expired. Log in again to continue.';
@@ -38,8 +43,8 @@ function WorkspaceFiles({ slug }: { slug: string }) {
   if (state.status === 'loading') {
     return (
       <section aria-busy="true">
-        <h1>Files</h1>
-        <p role="status" className="muted">
+        <h1 className="mb-4 text-2xl font-semibold tracking-tight break-words">Files</h1>
+        <p role="status" className="text-muted-foreground">
           Loading…
         </p>
       </section>
@@ -48,11 +53,11 @@ function WorkspaceFiles({ slug }: { slug: string }) {
   if (state.status === 'error') {
     return (
       <section>
-        <h1>Files</h1>
+        <h1 className="mb-4 text-2xl font-semibold tracking-tight break-words">Files</h1>
         <p role="alert">Could not load Workspaces.</p>
-        <button type="button" onClick={reload}>
+        <Button type="button" onClick={reload}>
           Retry
-        </button>
+        </Button>
       </section>
     );
   }
@@ -60,9 +65,9 @@ function WorkspaceFiles({ slug }: { slug: string }) {
   if (!workspace) {
     return (
       <section>
-        <h1>Workspace not found</h1>
-        <p className="muted">This Workspace does not exist or is not available to you.</p>
-        <Link href={GLOBAL_OVERVIEW_PATH}>Go to Global Overview</Link>
+        <h1 className="mb-4 text-2xl font-semibold tracking-tight break-words">Workspace not found</h1>
+        <p className="text-muted-foreground">This Workspace does not exist or is not available to you.</p>
+        <Link href={GLOBAL_OVERVIEW_PATH} className="rounded-sm text-primary underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-ring">Go to Global Overview</Link>
       </section>
     );
   }
@@ -204,10 +209,10 @@ function FilesPanel({ base, label }: { base: string; label: string }) {
 
   return (
     <section>
-      <p className="scope-label">{label}</p>
-      <h1>Files</h1>
-      <p className="muted">Original files are stored as uploaded and can only be downloaded, never previewed here.</p>
-      <div role="status" className="notice" hidden={!notice}>
+      <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+      <h1 className="mb-4 text-2xl font-semibold tracking-tight break-words">Files</h1>
+      <p className="text-muted-foreground">Original files are stored as uploaded and can only be downloaded, never previewed here.</p>
+      <div role="status" className="my-3 rounded-md border border-border bg-muted px-3 py-2 text-sm" hidden={!notice}>
         {notice}
       </div>
 
@@ -221,55 +226,55 @@ function FilesPanel({ base, label }: { base: string; label: string }) {
         }}
       />
 
-      <form onSubmit={applyFilters} aria-label="Filter files" className="form filters">
-        <div className="field">
-          <label htmlFor="filter-name">Name contains</label>
-          <input id="filter-name" type="text" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
+      <form onSubmit={applyFilters} aria-label="Filter files" className="flex flex-row flex-wrap items-end gap-3">
+        <div className="flex min-w-0 flex-col gap-1">
+          <Label htmlFor="filter-name">Name contains</Label>
+          <Input id="filter-name" type="text" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
         </div>
-        <div className="field">
-          <label htmlFor="filter-collection">Collection</label>
-          <select id="filter-collection" value={draft.collectionId} onChange={(e) => setDraft({ ...draft, collectionId: e.target.value })}>
+        <div className="flex min-w-0 flex-col gap-1">
+          <Label htmlFor="filter-collection">Collection</Label>
+          <Select id="filter-collection" value={draft.collectionId} onChange={(e) => setDraft({ ...draft, collectionId: e.target.value })}>
             <option value="">All Collections</option>
             {collections.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
-        <div className="field">
-          <label htmlFor="filter-tag">Tag</label>
-          <select id="filter-tag" value={draft.tag} onChange={(e) => setDraft({ ...draft, tag: e.target.value })}>
+        <div className="flex min-w-0 flex-col gap-1">
+          <Label htmlFor="filter-tag">Tag</Label>
+          <Select id="filter-tag" value={draft.tag} onChange={(e) => setDraft({ ...draft, tag: e.target.value })}>
             <option value="">All tags</option>
             {tags.map((t) => (
               <option key={t.id} value={t.name}>
                 {t.name}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
-        <div className="field">
-          <label htmlFor="filter-status">Status</label>
-          <select id="filter-status" value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value as Filters['status'] })}>
+        <div className="flex min-w-0 flex-col gap-1">
+          <Label htmlFor="filter-status">Status</Label>
+          <Select id="filter-status" value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value as Filters['status'] })}>
             <option value="">Any status</option>
             {INGESTION_STATUSES.map((s) => (
               <option key={s} value={s}>
                 {s}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
-        <div>
-          <button type="submit">Apply filters</button>{' '}
-          <button type="button" onClick={clearFilters}>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="submit">Apply filters</Button>{' '}
+          <Button type="button" onClick={clearFilters}>
             Clear filters
-          </button>
+          </Button>
         </div>
       </form>
 
-      <h2>All files</h2>
+      <h2 className="mt-6 mb-2 text-lg font-semibold break-words">All files</h2>
       {list.status === 'loading' && (
-        <p role="status" aria-busy="true" className="muted">
+        <p role="status" aria-busy="true" className="text-muted-foreground">
           Loading files…
         </p>
       )}
@@ -277,65 +282,65 @@ function FilesPanel({ base, label }: { base: string; label: string }) {
         <div>
           <p role="alert">{list.message}</p>
           {!list.session && (
-            <button type="button" onClick={() => void loadFirst(applied)}>
+            <Button type="button" onClick={() => void loadFirst(applied)}>
               Retry
-            </button>
+            </Button>
           )}
         </div>
       )}
-      {list.status === 'ready' && list.items.length === 0 && !filtered && <p className="muted">No files yet. Upload one above.</p>}
+      {list.status === 'ready' && list.items.length === 0 && !filtered && <p className="text-muted-foreground">No files yet. Upload one above.</p>}
       {list.status === 'ready' && list.items.length === 0 && filtered && (
         <div>
-          <p className="muted">No files match these filters.</p>
-          <button type="button" onClick={clearFilters}>
+          <p className="text-muted-foreground">No files match these filters.</p>
+          <Button type="button" onClick={clearFilters}>
             Clear filters
-          </button>
+          </Button>
         </div>
       )}
       {list.status === 'ready' && list.items.length > 0 && (
         <>
-          <table className="keys">
-            <caption className="sr-only">Files in this scope</caption>
-            <thead>
-              <tr>
-                <th scope="col">Name</th>
-                <th scope="col">Size</th>
-                <th scope="col">Collection</th>
-                <th scope="col">Tags</th>
-                <th scope="col">Status</th>
-                <th scope="col">Uploaded</th>
-                <th scope="col">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
+          <Table>
+            <TableCaption className="sr-only">Files in this scope</TableCaption>
+            <TableHeader>
+              <TableRow>
+                <TableHead scope="col">Name</TableHead>
+                <TableHead scope="col">Size</TableHead>
+                <TableHead scope="col">Collection</TableHead>
+                <TableHead scope="col">Tags</TableHead>
+                <TableHead scope="col">Status</TableHead>
+                <TableHead scope="col">Uploaded</TableHead>
+                <TableHead scope="col">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {list.items.map((f) => (
-                <tr key={f.id}>
-                  <th scope="row">{f.name}</th>
-                  <td>{formatSize(f.sizeBytes)}</td>
-                  <td>{collectionName(f.collectionId) ?? <span className="muted">—</span>}</td>
-                  <td>{f.tags.length > 0 ? f.tags.join(', ') : <span className="muted">—</span>}</td>
-                  <td>{f.ingestionStatus}</td>
-                  <td>{formatDate(f.createdAt)}</td>
-                  <td>
-                    <a href={`${filesBase}/${encodeURIComponent(f.id)}/download`} download>
+                <TableRow key={f.id}>
+                  <TableHead scope="row" className="text-foreground">{f.name}</TableHead>
+                  <TableCell>{formatSize(f.sizeBytes)}</TableCell>
+                  <TableCell>{collectionName(f.collectionId) ?? <span className="text-muted-foreground">—</span>}</TableCell>
+                  <TableCell>{f.tags.length > 0 ? f.tags.join(', ') : <span className="text-muted-foreground">—</span>}</TableCell>
+                  <TableCell>{f.ingestionStatus}</TableCell>
+                  <TableCell>{formatDate(f.createdAt)}</TableCell>
+                  <TableCell>
+                    <a className="rounded-sm text-primary underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-ring" href={`${filesBase}/${encodeURIComponent(f.id)}/download`} download>
                       Download<span className="sr-only"> {f.name}</span>
                     </a>{' '}
-                    <button type="button" className="link-button" onClick={() => setSelected(f.id)}>
+                    <Button type="button" variant="link" size="sm" className="h-auto px-0" onClick={() => setSelected(f.id)}>
                       Details<span className="sr-only"> {f.name}</span>
-                    </button>{' '}
-                    <button type="button" className="link-button" onClick={() => setDeleting(f)}>
+                    </Button>{' '}
+                    <Button type="button" variant="link" size="sm" className="h-auto px-0" onClick={() => setDeleting(f)}>
                       Delete<span className="sr-only"> {f.name}</span>
-                    </button>
-                  </td>
-                </tr>
+                    </Button>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
           {more.error && <p role="alert">{more.error}</p>}
           {list.nextCursor && (
-            <button type="button" onClick={() => void loadMore()} disabled={more.pending}>
+            <Button type="button" onClick={() => void loadMore()} disabled={more.pending}>
               {more.pending ? 'Loading…' : more.error ? 'Retry loading more' : 'Load more'}
-            </button>
+            </Button>
           )}
         </>
       )}
@@ -409,24 +414,24 @@ function DeleteDialog({ base, file, onCancel, onDeleted }: { base: string; file:
       aria-modal="true"
       aria-labelledby="delete-file-title"
       aria-describedby="delete-file-desc"
-      className="dialog"
+      className="fixed inset-0 z-50 m-auto flex h-fit w-[min(28rem,90vw)] flex-col gap-3 rounded-lg border border-border bg-popover p-5 text-popover-foreground"
       onKeyDown={(e) => {
         if (e.key === 'Escape' && !pending) onCancel();
       }}
     >
-      <h2 id="delete-file-title">Delete “{file.name}”?</h2>
+      <h2 className="mt-6 mb-2 text-lg font-semibold break-words" id="delete-file-title">Delete “{file.name}”?</h2>
       <p id="delete-file-desc">The file and its stored original are removed permanently.</p>
       {error && (
-        <p role="alert" className="field-error">
+        <p role="alert" className="text-sm text-destructive break-words">
           {error}
         </p>
       )}
-      <button type="button" ref={cancelRef} onClick={onCancel} disabled={pending}>
+      <Button type="button" ref={cancelRef} onClick={onCancel} disabled={pending}>
         Cancel
-      </button>{' '}
-      <button type="button" className="danger" onClick={confirm} disabled={pending}>
+      </Button>{' '}
+      <Button type="button" variant="destructive" onClick={confirm} disabled={pending}>
         {pending ? 'Deleting…' : 'Delete file'}
-      </button>
+      </Button>
     </div>
   );
 }

@@ -10,6 +10,10 @@ import { GLOBAL_OVERVIEW_PATH } from '@/lib/scope';
 import { FormField } from './form-field';
 import { PermissionPicker } from './permission-picker';
 import { useWorkspaces } from './workspaces-provider';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 const networkError: FormError = { message: 'Could not reach the server. Check your connection and try again.', fields: {}, status: 0 };
 const sessionError: FormError = { message: 'Your session has expired. Log in again to continue.', fields: {}, status: 401 };
@@ -31,8 +35,8 @@ export function ApiKeysView({ slug }: { slug: string }) {
   if (state.status === 'loading') {
     return (
       <section aria-busy="true">
-        <h1>API Keys</h1>
-        <p role="status" className="muted">
+        <h1 className="mb-4 text-2xl font-semibold tracking-tight break-words">API Keys</h1>
+        <p role="status" className="text-muted-foreground">
           Loading…
         </p>
       </section>
@@ -41,11 +45,11 @@ export function ApiKeysView({ slug }: { slug: string }) {
   if (state.status === 'error') {
     return (
       <section>
-        <h1>API Keys</h1>
+        <h1 className="mb-4 text-2xl font-semibold tracking-tight break-words">API Keys</h1>
         <p role="alert">Could not load Workspaces.</p>
-        <button type="button" onClick={reload}>
+        <Button type="button" onClick={reload}>
           Retry
-        </button>
+        </Button>
       </section>
     );
   }
@@ -53,9 +57,9 @@ export function ApiKeysView({ slug }: { slug: string }) {
   if (!workspace) {
     return (
       <section>
-        <h1>Workspace not found</h1>
-        <p className="muted">This Workspace does not exist or is not available to you.</p>
-        <Link href={GLOBAL_OVERVIEW_PATH}>Go to Global Overview</Link>
+        <h1 className="mb-4 text-2xl font-semibold tracking-tight break-words">Workspace not found</h1>
+        <p className="text-muted-foreground">This Workspace does not exist or is not available to you.</p>
+        <Link href={GLOBAL_OVERVIEW_PATH} className="rounded-sm text-primary underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-ring">Go to Global Overview</Link>
       </section>
     );
   }
@@ -94,23 +98,23 @@ function KeysPanel({ workspace }: { workspace: WorkspaceDto }) {
 
   return (
     <section>
-      <p className="scope-label">Workspace · {workspace.name}</p>
-      <h1>API Keys</h1>
-      <p className="muted">
+      <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Workspace · {workspace.name}</p>
+      <h1 className="mb-4 text-2xl font-semibold tracking-tight break-words">API Keys</h1>
+      <p className="text-muted-foreground">
         Keys give agents access to this Workspace only, limited to the permissions you select.
       </p>
 
       {created && <SecretView created={created} onDismiss={() => setCreated(null)} />}
       {notice && (
-        <p role="status" className="notice">
+        <p role="status" className="my-3 rounded-md border border-border bg-muted px-3 py-2 text-sm">
           {notice}
         </p>
       )}
 
       {mode === 'none' && !editing && (
-        <button type="button" onClick={() => { setMode('create'); setNotice(null); }}>
+        <Button type="button" onClick={() => { setMode('create'); setNotice(null); }}>
           Create API key
-        </button>
+        </Button>
       )}
       {mode === 'create' && (
         <CreateForm
@@ -136,9 +140,9 @@ function KeysPanel({ workspace }: { workspace: WorkspaceDto }) {
         />
       )}
 
-      <h2>Keys</h2>
+      <h2 className="mt-6 mb-2 text-lg font-semibold break-words">Keys</h2>
       {list.status === 'loading' && (
-        <p role="status" aria-busy="true" className="muted">
+        <p role="status" aria-busy="true" className="text-muted-foreground">
           Loading keys…
         </p>
       )}
@@ -146,64 +150,64 @@ function KeysPanel({ workspace }: { workspace: WorkspaceDto }) {
         <div>
           <p role="alert">{list.error.message}</p>
           {list.error.status !== 401 && (
-            <button type="button" onClick={() => { setList({ status: 'loading' }); void load(); }}>
+            <Button type="button" onClick={() => { setList({ status: 'loading' }); void load(); }}>
               Retry
-            </button>
+            </Button>
           )}
         </div>
       )}
       {list.status === 'ready' && list.keys.length === 0 && (
-        <p className="muted">No API keys yet. Create one to give an agent access to this Workspace.</p>
+        <p className="text-muted-foreground">No API keys yet. Create one to give an agent access to this Workspace.</p>
       )}
       {list.status === 'ready' && list.keys.length > 0 && (
-        <table className="keys">
-          <caption className="sr-only">API keys of this Workspace</caption>
-          <thead>
-            <tr>
-              <th scope="col">Name</th>
-              <th scope="col">Prefix</th>
-              <th scope="col">Permissions</th>
-              <th scope="col">Created</th>
-              <th scope="col">Last used</th>
-              <th scope="col">Expires</th>
-              <th scope="col">Status</th>
-              <th scope="col">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
+        <Table>
+          <TableCaption className="sr-only">API keys of this Workspace</TableCaption>
+          <TableHeader>
+            <TableRow>
+              <TableHead scope="col">Name</TableHead>
+              <TableHead scope="col">Prefix</TableHead>
+              <TableHead scope="col">Permissions</TableHead>
+              <TableHead scope="col">Created</TableHead>
+              <TableHead scope="col">Last used</TableHead>
+              <TableHead scope="col">Expires</TableHead>
+              <TableHead scope="col">Status</TableHead>
+              <TableHead scope="col">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {list.keys.map((k) => (
-              <tr key={k.id}>
-                <th scope="row">{k.name}</th>
-                <td>
+              <TableRow key={k.id}>
+                <TableHead scope="row" className="text-foreground">{k.name}</TableHead>
+                <TableCell>
                   <code>{k.prefix}</code>
-                </td>
-                <td>
+                </TableCell>
+                <TableCell>
                   {k.permissions.map((p) => (
-                    <code key={p} className="perm-chip">
+                    <code key={p} className="mb-1 mr-1 inline-block rounded-md border border-border px-1 text-xs">
                       {p}
                     </code>
                   ))}
-                </td>
-                <td>{formatDate(k.createdAt, '—')}</td>
-                <td>{formatDate(k.lastUsedAt, 'Never')}</td>
-                <td>{formatDate(k.expiresAt, 'Never')}</td>
-                <td>{k.status === 'active' ? 'Active' : k.status === 'revoked' ? 'Revoked' : 'Expired'}</td>
-                <td>
+                </TableCell>
+                <TableCell>{formatDate(k.createdAt, '—')}</TableCell>
+                <TableCell>{formatDate(k.lastUsedAt, 'Never')}</TableCell>
+                <TableCell>{formatDate(k.expiresAt, 'Never')}</TableCell>
+                <TableCell>{k.status === 'active' ? 'Active' : k.status === 'revoked' ? 'Revoked' : 'Expired'}</TableCell>
+                <TableCell>
                   {k.status === 'active' && (
                     <>
-                      <button type="button" className="link-button" onClick={() => { setEditing(k); setMode('none'); setNotice(null); }}>
+                      <Button type="button" variant="link" size="sm" className="h-auto px-0" onClick={() => { setEditing(k); setMode('none'); setNotice(null); }}>
                         Edit<span className="sr-only"> {k.name}</span>
-                      </button>{' '}
-                      <button type="button" className="link-button" onClick={() => setRevoking(k)}>
+                      </Button>{' '}
+                      <Button type="button" variant="link" size="sm" className="h-auto px-0" onClick={() => setRevoking(k)}>
                         Revoke<span className="sr-only"> {k.name}</span>
-                      </button>
+                      </Button>
                     </>
                   )}
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       )}
 
       {revoking && (
@@ -238,29 +242,29 @@ function SecretView({ created, onDismiss }: { created: CreatedApiKeyDto; onDismi
   }
 
   return (
-    <section aria-labelledby="secret-title" className="secret">
-      <h2 id="secret-title" tabIndex={-1} ref={headingRef}>
+    <section aria-labelledby="secret-title" className="my-4 flex min-w-0 flex-col gap-2 rounded-lg border border-primary p-4">
+      <h2 className="mt-6 mb-2 text-lg font-semibold break-words" id="secret-title" tabIndex={-1} ref={headingRef}>
         Copy your API key now
       </h2>
-      <p role="alert" className="warning">
+      <p role="alert" className="m-0 text-warning">
         This is the only time the full key is shown. It cannot be shown again. Store it somewhere safe.
       </p>
-      <p className="muted">
+      <p className="text-muted-foreground">
         Key “{created.apiKey.name}” was created.
       </p>
-      <label htmlFor="new-key-secret">API key</label>
-      <input id="new-key-secret" type="text" readOnly value={created.secret} autoComplete="off" spellCheck={false} onFocus={(e) => e.currentTarget.select()} />
-      <div>
-        <button type="button" onClick={onCopy}>
+      <Label htmlFor="new-key-secret">API key</Label>
+      <Input id="new-key-secret" className="font-mono" type="text" readOnly value={created.secret} autoComplete="off" spellCheck={false} onFocus={(e) => e.currentTarget.select()} />
+      <div className="flex flex-wrap items-center gap-2">
+        <Button type="button" onClick={onCopy}>
           Copy key
-        </button>{' '}
-        <button type="button" onClick={onDismiss}>
+        </Button>{' '}
+        <Button type="button" onClick={onDismiss}>
           I have saved it
-        </button>
+        </Button>
       </div>
       {copy === 'ok' && <p role="status">Copied to clipboard.</p>}
       {copy === 'failed' && (
-        <p role="alert" className="field-error">
+        <p role="alert" className="text-sm text-destructive break-words">
           Could not copy automatically. Select the key above and copy it manually.
         </p>
       )}
@@ -311,27 +315,27 @@ function CreateForm({ base, onCancel, onCreated }: { base: string; onCancel: () 
 
   const fe = { ...(error?.fields ?? {}), ...local };
   return (
-    <form onSubmit={onSubmit} aria-busy={pending} noValidate className="form" aria-label="Create API key">
-      <h2>Create API key</h2>
+    <form onSubmit={onSubmit} aria-busy={pending} noValidate className="flex max-w-lg flex-col gap-3" aria-label="Create API key">
+      <h2 className="mt-6 mb-2 text-lg font-semibold break-words">Create API key</h2>
       <FormField id="key-name" label="Name" error={fe.name}>
-        {(p) => <input {...p} type="text" maxLength={100} value={name} onChange={(e) => setName(e.target.value)} disabled={pending} />}
+        {(p) => <Input {...p} type="text" maxLength={100} value={name} onChange={(e) => setName(e.target.value)} disabled={pending} />}
       </FormField>
       <FormField id="key-expiry" label="Expiry (optional)" hint="Leave empty for a key that does not expire." error={fe.expiresAt}>
-        {(p) => <input {...p} type="datetime-local" value={expiry} onChange={(e) => setExpiry(e.target.value)} disabled={pending} />}
+        {(p) => <Input {...p} type="datetime-local" value={expiry} onChange={(e) => setExpiry(e.target.value)} disabled={pending} />}
       </FormField>
       <PermissionPicker idPrefix="create" value={permissions} onChange={setPermissions} disabled={pending} error={fe.permissions} />
       {error && (
-        <p role="alert" className="field-error">
+        <p role="alert" className="text-sm text-destructive break-words">
           {error.message}
         </p>
       )}
-      <div>
-        <button type="submit" disabled={pending}>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button type="submit" disabled={pending}>
           {pending ? 'Creating…' : 'Create key'}
-        </button>{' '}
-        <button type="button" onClick={onCancel} disabled={pending}>
+        </Button>{' '}
+        <Button type="button" onClick={onCancel} disabled={pending}>
           Cancel
-        </button>
+        </Button>
       </div>
     </form>
   );
@@ -372,24 +376,24 @@ function EditForm({ base, apiKey, onCancel, onSaved }: { base: string; apiKey: A
 
   const fe = { ...(error?.fields ?? {}), ...local };
   return (
-    <form onSubmit={onSubmit} aria-busy={pending} noValidate className="form" aria-label="Edit API key">
-      <h2>Edit {apiKey.name}</h2>
+    <form onSubmit={onSubmit} aria-busy={pending} noValidate className="flex max-w-lg flex-col gap-3" aria-label="Edit API key">
+      <h2 className="mt-6 mb-2 text-lg font-semibold break-words">Edit {apiKey.name}</h2>
       <FormField id="edit-name" label="Name" error={fe.name}>
-        {(p) => <input {...p} type="text" maxLength={100} value={name} onChange={(e) => setName(e.target.value)} disabled={pending} />}
+        {(p) => <Input {...p} type="text" maxLength={100} value={name} onChange={(e) => setName(e.target.value)} disabled={pending} />}
       </FormField>
       <PermissionPicker idPrefix="edit" value={permissions} onChange={setPermissions} disabled={pending} error={fe.permissions} />
       {error && (
-        <p role="alert" className="field-error">
+        <p role="alert" className="text-sm text-destructive break-words">
           {error.message}
         </p>
       )}
-      <div>
-        <button type="submit" disabled={pending}>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button type="submit" disabled={pending}>
           {pending ? 'Saving…' : 'Save changes'}
-        </button>{' '}
-        <button type="button" onClick={onCancel} disabled={pending}>
+        </Button>{' '}
+        <Button type="button" onClick={onCancel} disabled={pending}>
           Cancel
-        </button>
+        </Button>
       </div>
     </form>
   );
@@ -423,24 +427,24 @@ function RevokeDialog({ base, apiKey, onCancel, onRevoked }: { base: string; api
       aria-modal="true"
       aria-labelledby="revoke-title"
       aria-describedby="revoke-desc"
-      className="dialog"
+      className="fixed inset-0 z-50 m-auto flex h-fit w-[min(28rem,90vw)] flex-col gap-3 rounded-lg border border-border bg-popover p-5 text-popover-foreground"
       onKeyDown={(e) => {
         if (e.key === 'Escape' && !pending) onCancel();
       }}
     >
-      <h2 id="revoke-title">Revoke “{apiKey.name}”?</h2>
+      <h2 className="mt-6 mb-2 text-lg font-semibold break-words" id="revoke-title">Revoke “{apiKey.name}”?</h2>
       <p id="revoke-desc">Any agent using this key loses access immediately. This cannot be undone.</p>
       {error && (
-        <p role="alert" className="field-error">
+        <p role="alert" className="text-sm text-destructive break-words">
           {error.message}
         </p>
       )}
-      <button type="button" ref={cancelRef} onClick={onCancel} disabled={pending}>
+      <Button type="button" ref={cancelRef} onClick={onCancel} disabled={pending}>
         Cancel
-      </button>{' '}
-      <button type="button" className="danger" onClick={confirm} disabled={pending}>
+      </Button>{' '}
+      <Button type="button" variant="destructive" onClick={confirm} disabled={pending}>
         {pending ? 'Revoking…' : 'Revoke key'}
-      </button>
+      </Button>
     </div>
   );
 }

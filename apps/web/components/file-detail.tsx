@@ -6,6 +6,10 @@ import type { CollectionDto, FileDto } from '@/lib/api-types';
 import { formatSize, parseTagInput } from '@/lib/files';
 import { readFormError } from '@/lib/form-errors';
 import { FormField } from './form-field';
+import { Button } from '@/components/ui/button';
+import { Select } from '@/components/ui/select';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 const NETWORK = 'Could not reach the server. Check your connection and try again.';
 const SESSION = 'Your session has expired. Log in again to continue.';
@@ -83,53 +87,53 @@ export function FileDetail({
   const fe = error?.fields ?? {};
   const formLevel = error && Object.keys(fe).length === 0 && error.message ? error.message : null;
   return (
-    <aside aria-labelledby="file-detail-title" className="file-detail">
-      <h2 id="file-detail-title" ref={headingRef} tabIndex={-1}>
+    <aside aria-labelledby="file-detail-title" className="my-4 min-w-0 rounded-lg border border-border p-4">
+      <h2 className="mt-6 mb-2 text-lg font-semibold break-words" id="file-detail-title" ref={headingRef} tabIndex={-1}>
         File details
       </h2>
-      <dl>
-        <dt>Type</dt>
-        <dd>{file.mimeType}</dd>
-        <dt>Size</dt>
-        <dd>{formatSize(file.sizeBytes)}</dd>
-        <dt>SHA-256</dt>
-        <dd className="mono">{file.sha256}</dd>
+      <dl className="my-3 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-1">
+        <dt className="text-muted-foreground">Type</dt>
+        <dd className="m-0 min-w-0 break-words">{file.mimeType}</dd>
+        <dt className="text-muted-foreground">Size</dt>
+        <dd className="m-0 min-w-0 break-words">{formatSize(file.sizeBytes)}</dd>
+        <dt className="text-muted-foreground">SHA-256</dt>
+        <dd className="m-0 font-mono break-all">{file.sha256}</dd>
       </dl>
-      <form onSubmit={submit} noValidate aria-busy={pending} aria-label={`Edit ${file.name}`} className="form">
+      <form onSubmit={submit} noValidate aria-busy={pending} aria-label={`Edit ${file.name}`} className="flex max-w-lg flex-col gap-3">
         <FormField id="file-name" label="Display name" error={fe.name}>
-          {(p) => <input {...p} type="text" value={name} onChange={(e) => setName(e.target.value)} disabled={pending} />}
+          {(p) => <Input {...p} type="text" value={name} onChange={(e) => setName(e.target.value)} disabled={pending} />}
         </FormField>
-        <div className="field">
-          <label htmlFor="file-collection">Collection</label>
-          <select id="file-collection" value={collectionId} onChange={(e) => setCollectionId(e.target.value)} disabled={pending}>
+        <div className="flex min-w-0 flex-col gap-1">
+          <Label htmlFor="file-collection">Collection</Label>
+          <Select id="file-collection" value={collectionId} onChange={(e) => setCollectionId(e.target.value)} disabled={pending}>
             <option value="">No Collection</option>
             {collections.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
               </option>
             ))}
-          </select>
-          {fe.collectionId && <p className="field-error">{fe.collectionId}</p>}
+          </Select>
+          {fe.collectionId && <p className="text-sm text-destructive break-words">{fe.collectionId}</p>}
         </div>
         <FormField id="file-tags" label="Tags" hint="Separate tags with commas. Saving replaces the current tags." error={fe.tags}>
-          {(p) => <input {...p} type="text" value={tagText} onChange={(e) => setTagText(e.target.value)} disabled={pending} />}
+          {(p) => <Input {...p} type="text" value={tagText} onChange={(e) => setTagText(e.target.value)} disabled={pending} />}
         </FormField>
         {formLevel && (
-          <p role="alert" className="field-error">
+          <p role="alert" className="text-sm text-destructive break-words">
             {formLevel}
           </p>
         )}
         <div role="status">{saved ? 'Changes saved.' : ''}</div>
-        <div>
-          <button type="submit" disabled={pending}>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="submit" disabled={pending}>
             {pending ? 'Saving…' : 'Save changes'}
-          </button>{' '}
-          <a href={`${base}/${encodeURIComponent(file.id)}/download`} download>
+          </Button>{' '}
+          <a className="rounded-sm text-primary underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-ring" href={`${base}/${encodeURIComponent(file.id)}/download`} download>
             Download<span className="sr-only"> {file.name}</span>
           </a>{' '}
-          <button type="button" onClick={onClose} disabled={pending}>
+          <Button type="button" onClick={onClose} disabled={pending}>
             Close
-          </button>
+          </Button>
         </div>
       </form>
     </aside>
