@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
-import { ChevronRight, LogOut, Menu, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { ChevronRight, LogOut, Menu, PanelLeftClose, PanelLeftOpen, User } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiFetch } from '@/lib/api-client';
 import { areaFromPathname, areaHref, visibleGroups } from '@/lib/navigation';
@@ -98,7 +98,7 @@ function UserMenu({ username, collapsed }: { username: string; collapsed: boolea
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" aria-label={`Account menu for ${username}`} className={cn('w-full justify-start', collapsed && 'justify-center px-0')}>
           <span aria-hidden="true" className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
-            {username.slice(0, 1).toUpperCase()}
+            <User className="size-3.5" />
           </span>
           {!collapsed && <span className="min-w-0 truncate">{username}</span>}
         </Button>

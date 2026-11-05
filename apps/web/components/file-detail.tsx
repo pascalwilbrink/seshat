@@ -128,7 +128,7 @@ export function FileDetail({
           <Button type="submit" disabled={pending}>
             {pending ? 'Saving…' : 'Save changes'}
           </Button>{' '}
-          <a className="rounded-sm text-primary underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-ring" href={`${base}/${encodeURIComponent(file.id)}/download`} download>
+          <a className="rounded-sm text-foreground underline underline-offset-4 hover:no-underline focus-visible:outline-2 focus-visible:outline-ring" href={`${base}/${encodeURIComponent(file.id)}/download`} download>
             Download<span className="sr-only"> {file.name}</span>
           </a>{' '}
           <Button type="button" onClick={onClose} disabled={pending}>

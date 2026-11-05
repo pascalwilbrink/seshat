@@ -7,8 +7,8 @@ export function Card({ className, ...props }: React.ComponentProps<'div'>) {
 export function CardHeader({ className, ...props }: React.ComponentProps<'div'>) {
   return <div className={cn('flex flex-col gap-1.5 p-4', className)} {...props} />;
 }
-export function CardTitle({ className, ...props }: React.ComponentProps<'h3'>) {
-  return <h3 className={cn('font-semibold leading-none', className)} {...props} />;
+export function CardTitle({ className, as: Tag = 'h3', ...props }: React.ComponentProps<'h3'> & { as?: 'h1' | 'h2' | 'h3' }) {
+  return <Tag className={cn('font-semibold leading-none', className)} {...props} />;
 }
 export function CardDescription({ className, ...props }: React.ComponentProps<'p'>) {
   return <p className={cn('text-sm text-muted-foreground', className)} {...props} />;
