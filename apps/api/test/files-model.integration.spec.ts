@@ -385,6 +385,7 @@ describeIntegration('Files, Collections and Tags model (real PostgreSQL)', () =>
         const tables = async () =>
           (await iso.query(`SELECT table_name FROM information_schema.tables WHERE table_schema = '${iso.schema}' ORDER BY table_name`)).map((t) => t.table_name);
         expect(await tables()).toEqual(expect.arrayContaining(['chunks', 'collections', 'file_tags', 'files', 'tags']));
+        await d.undoLastMigration({ transaction: 'each' }); // keyword vectors
         await d.undoLastMigration({ transaction: 'each' }); // memory embedding generation
         await d.undoLastMigration({ transaction: 'each' }); // memories
         await d.undoLastMigration({ transaction: 'each' }); // chunks
@@ -393,7 +394,7 @@ describeIntegration('Files, Collections and Tags model (real PostgreSQL)', () =>
         const after = await tables();
         for (const t of ['chunks', 'collections', 'file_tags', 'files', 'tags']) expect(after).not.toContain(t);
         expect(after).toContain('workspaces');
-        expect(await d.runMigrations({ transaction: 'each' })).toHaveLength(5);
+        expect(await d.runMigrations({ transaction: 'each' })).toHaveLength(6);
       } finally {
         await d.destroy();
       }

@@ -173,12 +173,13 @@ describeIntegration('chunks schema and startup dimension guard (real PostgreSQL 
   });
 
   it('down removes chunks and the new file columns; up recreates them', async () => {
+    await ds.undoLastMigration({ transaction: 'each' }); // keyword vectors
     await ds.undoLastMigration({ transaction: 'each' }); // memory embedding generation
     await ds.undoLastMigration({ transaction: 'each' }); // memories
     await ds.undoLastMigration({ transaction: 'each' });
     expect((await q(`SELECT to_regclass('chunks') AS t`))[0]!.t).toBeNull();
     expect(await q(`SELECT 1 FROM information_schema.columns WHERE table_schema = $1 AND table_name = 'files' AND column_name IN ('indexed_at','chunk_count')`, [iso.schema])).toEqual([]);
-    expect((await ds.runMigrations({ transaction: 'each' })).map((m) => m.name)).toEqual(['CreateChunks1762800000000', 'CreateMemories1762900000000', 'AddMemoryEmbeddingGeneration1763000000000']);
+    expect((await ds.runMigrations({ transaction: 'each' })).map((m) => m.name)).toEqual(['CreateChunks1762800000000', 'CreateMemories1762900000000', 'AddMemoryEmbeddingGeneration1763000000000', 'AddKeywordSearchVectors1763100000000']);
     await expect(assertEmbeddingDimension(ds, DIM)).resolves.toBeUndefined();
   });
 });

@@ -55,6 +55,18 @@ export class Memory extends ScopedEntity {
   @Column({ name: 'title', type: 'varchar', length: MEMORY_TITLE_MAX, nullable: true })
   title!: string | null;
 
+  /** Generated `to_tsvector('simple', title + content)` (owned by the migration, GIN-indexed); never written or loaded by the app. */
+  @Column({
+    name: 'search_tsv',
+    type: 'tsvector',
+    generatedType: 'STORED',
+    asExpression: `to_tsvector('simple'::regconfig, coalesce("title", '') || ' ' || "content")`,
+    insert: false,
+    update: false,
+    select: false,
+  })
+  searchTsv?: string;
+
   @Column({ name: 'metadata', type: 'jsonb', nullable: true })
   metadata!: Record<string, unknown> | null;
 

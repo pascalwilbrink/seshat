@@ -63,6 +63,18 @@ export class Chunk extends ScopedEntity {
   @Column({ name: 'content', type: 'text' })
   content!: string;
 
+  /** Generated `to_tsvector('simple', content)` (owned by the migration, GIN-indexed); never written or loaded by the app. */
+  @Column({
+    name: 'content_tsv',
+    type: 'tsvector',
+    generatedType: 'STORED',
+    asExpression: `to_tsvector('simple'::regconfig, "content")`,
+    insert: false,
+    update: false,
+    select: false,
+  })
+  contentTsv?: string;
+
   @Column({ name: 'location', type: 'jsonb' })
   location!: ChunkLocation;
 
