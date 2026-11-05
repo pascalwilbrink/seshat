@@ -51,6 +51,8 @@ export const EXPECTED: Record<string, Expected> = {
   'tag.rename': { kind: 'write', permission: 'files:write', anyOf: ['files:write', 'memories:write'], ...TAG_READ },
   'tag.delete': { kind: 'write', permission: 'files:write', anyOf: ['files:write', 'memories:write'], ...TAG_READ },
   'memory.recall': { kind: 'read', permission: 'memories:read' },
+  'memory.list': { kind: 'read', permission: 'memories:read', ...MEMORY_READ },
+  'memory.get': { kind: 'read', permission: 'memories:read', ...MEMORY_READ },
   'memory.remember': { kind: 'write', permission: 'memories:write', ...MEMORY_READ },
   'memory.update': { kind: 'write', permission: 'memories:write', ...MEMORY_READ },
   'memory.forget': { kind: 'delete', permission: 'memories:delete', ...MEMORY_READ },

@@ -103,7 +103,7 @@ describe('action catalog', () => {
   it('conceals Global for every files, Collections and Tags action and the Memory write actions, and for nothing else', () => {
     for (const action of ACTIONS) {
       const req = getActionRequirement(action) as { concealGlobal?: boolean };
-      expect(Boolean(req.concealGlobal), action).toBe(/^(file|collection|tag)\./.test(action) || /^memory\.(remember|update|forget|supersede)$/.test(action));
+      expect(Boolean(req.concealGlobal), action).toBe(/^(file|collection|tag)\./.test(action) || /^memory\.(list|get|remember|update|forget|supersede)$/.test(action));
     }
   });
 

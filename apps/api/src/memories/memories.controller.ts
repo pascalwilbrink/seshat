@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, HttpCode, Inject, Param, Post, Put, Res } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Inject, Param, Post, Put, Query, Res } from '@nestjs/common';
 import { CurrentPrincipal } from '../auth/http.js';
 import type { Principal } from '../auth/principal.js';
 import { ZodValidationPipe } from '../common/zod-validation.pipe.js';
@@ -14,6 +14,7 @@ import {
   supersedeMemorySchema,
   updateMemorySchema,
 } from './memory.dto.js';
+import type { MemoryListPage } from './memory-list-query.js';
 import { MemoriesService } from './memories.service.js';
 
 interface StatusResponse {
@@ -28,6 +29,34 @@ interface StatusResponse {
 @Controller()
 export class MemoriesController {
   constructor(@Inject(MemoriesService) private readonly memories: MemoriesService) {}
+
+  @Get('global/memories')
+  listGlobal(@CurrentPrincipal() principal: Principal, @Query() query: unknown): Promise<MemoryListPage<MemoryDto>> {
+    return this.memories.list(principal, globalScope(), query);
+  }
+
+  @Get('workspaces/:workspaceId/memories')
+  list(
+    @CurrentPrincipal() principal: Principal,
+    @Param('workspaceId', new WorkspaceScopePipe()) scope: ScopeRef,
+    @Query() query: unknown,
+  ): Promise<MemoryListPage<MemoryDto>> {
+    return this.memories.list(principal, scope, query);
+  }
+
+  @Get('global/memories/:memoryId')
+  getGlobal(@CurrentPrincipal() principal: Principal, @Param('memoryId') memoryId: string): Promise<MemoryDto> {
+    return this.memories.get(principal, globalScope(), memoryId);
+  }
+
+  @Get('workspaces/:workspaceId/memories/:memoryId')
+  get(
+    @CurrentPrincipal() principal: Principal,
+    @Param('workspaceId', new WorkspaceScopePipe()) scope: ScopeRef,
+    @Param('memoryId') memoryId: string,
+  ): Promise<MemoryDto> {
+    return this.memories.get(principal, scope, memoryId);
+  }
 
   @Post('global/memories')
   createGlobal(
