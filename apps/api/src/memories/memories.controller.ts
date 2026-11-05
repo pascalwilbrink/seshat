@@ -117,6 +117,22 @@ export class MemoriesController {
     return this.memories.supersede(principal, scope, memoryId, body);
   }
 
+  @Post('global/memories/:memoryId/retry-embedding')
+  @HttpCode(202)
+  retryEmbeddingGlobal(@CurrentPrincipal() principal: Principal, @Param('memoryId') memoryId: string): Promise<MemoryDto> {
+    return this.memories.retryEmbedding(principal, globalScope(), memoryId);
+  }
+
+  @Post('workspaces/:workspaceId/memories/:memoryId/retry-embedding')
+  @HttpCode(202)
+  retryEmbedding(
+    @CurrentPrincipal() principal: Principal,
+    @Param('workspaceId', new WorkspaceScopePipe()) scope: ScopeRef,
+    @Param('memoryId') memoryId: string,
+  ): Promise<MemoryDto> {
+    return this.memories.retryEmbedding(principal, scope, memoryId);
+  }
+
   @Delete('global/memories/:memoryId')
   @HttpCode(204)
   removeGlobal(@CurrentPrincipal() principal: Principal, @Param('memoryId') memoryId: string): Promise<void> {

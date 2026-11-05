@@ -35,6 +35,7 @@ describe('loadConfig', () => {
       openaiApiKey: undefined,
       embeddingModel: 'text-embedding-3-small',
       embeddingDimension: 1536,
+      memorySimilarityHint: 0.9,
     });
   });
 
@@ -182,6 +183,15 @@ describe('loadConfig', () => {
         }
       },
     );
+
+    it('validates MEMORY_SIMILARITY_HINT: default 0.9, finite number in [0, 1], never echoed', () => {
+      expect(loadConfig({ ...VALID }).memorySimilarityHint).toBe(0.9);
+      for (const [raw, n] of [['0', 0], ['1', 1], ['0.75', 0.75], ['.5', 0.5]] as const) expect(loadConfig({ ...VALID, MEMORY_SIMILARITY_HINT: raw }).memorySimilarityHint).toBe(n);
+      for (const bad of ['abc', '-0.1', '1.01', 'NaN', 'Infinity', '0x1', '1e0', `0.5${SENTINEL}`]) {
+        const message = problemsOf({ ...VALID, MEMORY_SIMILARITY_HINT: bad });
+        expect(message).toBe('Invalid configuration: MEMORY_SIMILARITY_HINT (must be a number between 0 and 1)');
+      }
+    });
 
     it('validates CHUNK_OVERLAP_CHARS: zero allowed, negative or malformed rejected, below the size', () => {
       expect(loadConfig({ ...VALID, CHUNK_OVERLAP_CHARS: '0' }).chunkOverlapChars).toBe(0);

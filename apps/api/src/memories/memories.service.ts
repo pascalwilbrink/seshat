@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException, Optional, ServiceUnavailableException } from '@nestjs/common';
 import { getDataSourceToken } from '@nestjs/typeorm';
 import type { DataSource, EntityManager } from 'typeorm';
 import { AuthorizationService } from '../auth/authorization.service.js';
@@ -18,6 +18,8 @@ import { memoryContentHash } from './memory-content.js';
 import { encodeCursor } from '../files/file-list-query.js';
 import { type MemoryListPage, parseMemoryListQuery } from './memory-list-query.js';
 import { buildMemoryProvenance } from './memory-provenance.js';
+import { type MemoryEmbeddingCoordinator, returnedRows } from './memory-embedding.coordinator.js';
+import { MEMORY_EMBEDDING_COORDINATOR } from './memory-embedding.worker.js';
 
 const NOT_FOUND = 'Not Found';
 /** Columns of a response; the embedding vector and the content hash are never selected for DTOs. */
@@ -97,6 +99,7 @@ export class MemoriesService {
     @Inject(getDataSourceToken()) private readonly dataSource: DataSource,
     @Inject(AuthorizationService) private readonly authorization: AuthorizationService,
     @Inject(TagsService) private readonly tags: TagsService,
+    @Optional() @Inject(MEMORY_EMBEDDING_COORDINATOR) private readonly embeddings?: MemoryEmbeddingCoordinator,
   ) {}
 
   /**
@@ -185,7 +188,7 @@ export class MemoriesService {
     const scopeKey = scopeKeyOf(scope);
     const cols = scopeColumns(scope);
 
-    return this.transact(async (manager) => {
+    const created = await this.transact(async (manager) => {
       let predecessor: string | null = null;
       if (supersedes !== null) {
         const [row] = await this.lock(manager, scopeKey, [supersedes.toLowerCase()]);
@@ -195,13 +198,14 @@ export class MemoriesService {
       }
 
       let id: string | null = null;
+      let generation = 0;
       let deduplicated = false;
       for (let attempt = 0; attempt < 5 && id === null; attempt++) {
         const inserted = (await manager.query(
           `INSERT INTO "memories" ("scope", "workspace_id", "type", "content", "title", "metadata", "confidence", "source",
              "created_by_kind", "created_by_key_id", "created_by_key_name", "client_name", "client_version", "content_hash")
            VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11, $12, $13, $14)
-           ON CONFLICT ("scope_key", "type", "content_hash") WHERE "status" = 'active' DO NOTHING RETURNING "id"`,
+           ON CONFLICT ("scope_key", "type", "content_hash") WHERE "status" = 'active' DO NOTHING RETURNING "id", "embedding_generation"`,
           [
             cols.scope,
             cols.workspaceId,
@@ -218,9 +222,10 @@ export class MemoriesService {
             provenance.clientVersion,
             hash,
           ],
-        )) as { id: string }[];
+        )) as { id: string; embedding_generation: number }[];
         if (inserted.length > 0) {
           id = inserted[0]!.id;
+          generation = inserted[0]!.embedding_generation;
           break;
         }
         // The conflicting row was committed by someone else; if it was superseded or forgotten meanwhile, insert again.
@@ -239,8 +244,17 @@ export class MemoriesService {
       if (deduplicated) await this.tags.unionMemoryTags(manager, scope, id, input.tags ?? []);
       else await this.tags.replaceMemoryTags(manager, scope, id, input.tags ?? []);
       if (predecessor !== null) await this.markSuperseded(manager, scopeKey, predecessor, id);
-      return { ...(await this.load(manager, scopeKey, id)), deduplicated };
+      return { dto: await this.load(manager, scopeKey, id), deduplicated, generation };
     });
+    // Provider I/O happens after the commit, never inside the transaction. A duplicate reuses its vector: no new embedding.
+    let hints: CreateMemoryResult['hints'] = [];
+    let dto = created.dto;
+    if (!created.deduplicated && this.embeddings) {
+      const vector = await this.embeddings.embedAfterCommit({ scopeKey, id: dto.id, generation: created.generation, title: input.title ?? null, content: input.content });
+      dto = await this.load(this.dataSource.manager, scopeKey, dto.id).catch(() => dto);
+      if (vector) hints = await this.embeddings.hints(scopeKey, dto.id, vector).catch(() => []);
+    }
+    return { ...dto, deduplicated: created.deduplicated, hints };
   }
 
   /**
@@ -255,7 +269,7 @@ export class MemoriesService {
     await this.assertScopeExists(scope);
     const id = memoryId.toLowerCase();
     const scopeKey = scopeKeyOf(scope);
-    return this.transact(async (manager) => {
+    const updated = await this.transact(async (manager) => {
       const [current] = (await manager.query(
         `SELECT "id", "status", "superseded_by", "content", "title" FROM "memories" WHERE "id" = $1 AND "scope_key" = $2 FOR UPDATE`,
         [id, scopeKey],
@@ -265,14 +279,17 @@ export class MemoriesService {
         throw new ConflictException({ statusCode: 409, message: 'A superseded Memory cannot be changed', supersededBy: current.superseded_by });
       }
       const embeddingInputChanged = current.content !== input.content || current.title !== (input.title ?? null);
+      let generation = 0;
       try {
-        await manager.query(
+        const res = returnedRows<{ generation: number }>(await manager.query(
           `UPDATE "memories" SET "type" = $3, "content" = $4, "title" = $5, "metadata" = $6::jsonb, "confidence" = $7, "source" = $8,
              "content_hash" = $9, "updated_at" = now(),
              "embedding" = CASE WHEN $10::boolean THEN NULL ELSE "embedding" END,
              "embedding_model" = CASE WHEN $10::boolean THEN NULL ELSE "embedding_model" END,
-             "embedding_status" = CASE WHEN $10::boolean THEN 'pending' ELSE "embedding_status" END
-           WHERE "id" = $1 AND "scope_key" = $2`,
+             "embedding_status" = CASE WHEN $10::boolean THEN 'pending' ELSE "embedding_status" END,
+             "embedding_generation" = CASE WHEN $10::boolean THEN "embedding_generation" + 1 ELSE "embedding_generation" END,
+             "embedding_scheduled_at" = CASE WHEN $10::boolean THEN NULL ELSE "embedding_scheduled_at" END
+           WHERE "id" = $1 AND "scope_key" = $2 RETURNING "embedding_generation" AS "generation"`,
           [
             id,
             scopeKey,
@@ -285,14 +302,38 @@ export class MemoriesService {
             memoryContentHash(input.content),
             embeddingInputChanged,
           ],
-        );
+        ));
+        generation = res[0]?.generation ?? 0;
       } catch (err) {
         if (pgCode(err) === '23505') throw new ConflictException('An active Memory with this type and content already exists');
         throw err;
       }
       await this.tags.replaceMemoryTags(manager, scope, id, input.tags);
-      return this.load(manager, scopeKey, id);
+      return { dto: await this.load(manager, scopeKey, id), embed: embeddingInputChanged ? generation : null };
     });
+    if (updated.embed === null || !this.embeddings) return updated.dto;
+    await this.embeddings.embedAfterCommit({ scopeKey, id, generation: updated.embed, title: input.title, content: input.content });
+    return this.load(this.dataSource.manager, scopeKey, id).catch(() => updated.dto);
+  }
+
+  /**
+   * `memory.retryEmbedding` (admin only): a `failed` Memory becomes `pending` with a new generation and is queued
+   * again through the shared queue. Missing, foreign and ungranted ids are the same 404; any other status is a 409.
+   */
+  async retryEmbedding(principal: Principal, scope: ScopeRef, memoryId: string): Promise<MemoryDto> {
+    this.authorization.assertCan(principal, 'memory.retryEmbedding', scope);
+    if (!isUuid(memoryId)) throw new NotFoundException(NOT_FOUND);
+    await this.assertScopeExists(scope);
+    if (!this.embeddings) throw new ServiceUnavailableException('Embeddings are not available');
+    const id = memoryId.toLowerCase();
+    const scopeKey = scopeKeyOf(scope);
+    const generation = await this.embeddings.restart(scopeKey, id);
+    if (generation === null) {
+      await this.load(this.dataSource.manager, scopeKey, id); // 404 when missing in this scope
+      throw new ConflictException('Only a Memory whose embedding failed can be retried');
+    }
+    await this.embeddings.schedule(scopeKey, id, generation);
+    return this.load(this.dataSource.manager, scopeKey, id);
   }
 
   /**

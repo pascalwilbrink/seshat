@@ -98,6 +98,14 @@ export class Memory extends ScopedEntity {
   @Column({ name: 'embedding_status', type: 'varchar', length: 16, default: 'pending' })
   embeddingStatus!: MemoryEmbeddingStatus;
 
+  /** Bumped whenever the embedding input (content or title) changes or a retry is requested; guards every embedding write. */
+  @Column({ name: 'embedding_generation', type: 'int', default: 0 })
+  embeddingGeneration!: number;
+
+  /** Set when a job for the current generation was queued; null means the pending record still needs scheduling (outbox). */
+  @Column({ name: 'embedding_scheduled_at', type: 'timestamp with time zone', nullable: true })
+  embeddingScheduledAt!: Date | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamp with time zone' })
   createdAt!: Date;
 

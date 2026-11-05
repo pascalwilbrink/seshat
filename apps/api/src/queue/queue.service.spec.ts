@@ -49,7 +49,7 @@ describe('QueueService lifecycle', () => {
     await service.registerWorker(INGEST_FILE_QUEUE, handler);
     expect(boss.work).not.toHaveBeenCalled();
     await service.onApplicationBootstrap();
-    expect(boss.calls).toEqual(['start', 'createQueue', 'updateQueue', 'work']);
+    expect(boss.calls).toEqual(['start', 'createQueue', 'updateQueue', 'createQueue', 'updateQueue', 'work']);
     expect(boss.createQueue).toHaveBeenCalledWith(
       INGEST_FILE_QUEUE,
       expect.objectContaining({ policy: 'exclusive', retryLimit: 2, retryBackoff: true }),
@@ -162,5 +162,18 @@ describe('worker wrapper', () => {
     const err = await run(handler, { data: { fileId: 'x', content: 'SENTINEL' }, retryCount: 0 }).catch((e: unknown) => e);
     expect(err).toMatchObject({ code: 'invalid_payload' });
     expect(handler).not.toHaveBeenCalled();
+  });
+
+  it('passes the memory payload and attempt info to the embed-memory handler and rejects bad payloads', async () => {
+    const { boss, service } = setup();
+    const seen: unknown[] = [];
+    await service.registerMemoryWorker(async (c) => void seen.push(c));
+    await service.onApplicationBootstrap();
+    const id = '00000000-0000-4000-8000-000000000001';
+    await boss.workHandler!([{ id: 'j', name: 'embed-memory', data: { scope: 'global', memoryId: id, generation: 2 }, retryCount: 2 } as never]);
+    expect(seen).toEqual([{ scope: 'global', memoryId: id, generation: 2, attempt: 3, maxAttempts: 3, isFinalAttempt: true }]);
+    const err = await boss.workHandler!([{ id: 'j', name: 'embed-memory', data: { scope: 'global', memoryId: id, generation: -1, content: 'SENTINEL' }, retryCount: 0 } as never]).catch((e: unknown) => e);
+    expect(err).toMatchObject({ code: 'invalid_payload' });
+    expect(seen).toHaveLength(1);
   });
 });

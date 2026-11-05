@@ -12,6 +12,7 @@ import {
   type MemoryStatus,
   type MemoryType,
 } from './memory.entity.js';
+import type { MemoryHint } from './memory-embedding.coordinator.js';
 import { normalizeMemoryContent } from './memory-content.js';
 
 /** Counts Unicode code points, like Postgres `char_length`, not UTF-16 units. */
@@ -143,5 +144,11 @@ export function toMemoryDto(m: Memory, tagNames: readonly string[]): MemoryDto {
 export const supersedeMemorySchema = z.strictObject({ successorId: uuid });
 export type SupersedeMemoryInput = z.infer<typeof supersedeMemorySchema>;
 
-/** Create response: the Memory plus whether an existing active duplicate was reused instead of inserting. */
-export type CreateMemoryResult = MemoryDto & { deduplicated: boolean };
+export type { MemoryHint };
+
+/**
+ * Create response: the Memory, whether an existing active duplicate was reused instead of inserting, and up to three
+ * similar active Memories of the same scope (id, type, short preview). `hints` is empty when no new vector is available
+ * (a deduplicated create, or an embedding that is still pending). Nothing is ever merged or changed automatically.
+ */
+export type CreateMemoryResult = MemoryDto & { deduplicated: boolean; hints: MemoryHint[] };
