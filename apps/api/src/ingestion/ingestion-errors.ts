@@ -1,4 +1,4 @@
-export type IngestionErrorCode = 'unsupported_file_type' | 'invalid_encoding';
+export type IngestionErrorCode = 'unsupported_file_type' | 'invalid_encoding' | 'original_missing';
 
 /**
  * Permanent ingestion failure: retrying cannot succeed. The message is a fixed safe string; it never contains file
@@ -27,6 +27,13 @@ export class InvalidEncodingError extends IngestionError {
   constructor() {
     super('invalid_encoding', 'File is not valid UTF-8 text');
     this.name = 'InvalidEncodingError';
+  }
+}
+
+export class OriginalMissingError extends IngestionError {
+  constructor() {
+    super('original_missing', 'Original file is missing from storage');
+    this.name = 'OriginalMissingError';
   }
 }
 

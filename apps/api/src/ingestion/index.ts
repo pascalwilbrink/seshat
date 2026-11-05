@@ -7,3 +7,5 @@ export * from './file-ingestor.js';
 export { FileIngestorProvider, provideFileIngestors } from './file-ingestor.provider.js';
 export { PlainTextIngestor } from './plain-text.ingestor.js';
 export * from './ingestion-errors.js';
+export { IngestionProcessor, INGESTION_ERROR_MESSAGES } from './ingestion.processor.js';
+export { IngestionModule } from './ingestion.module.js';
