@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { MEMORY_TYPES, type MemoryType } from '../memories/memory.entity.js';
 import { isValidTagName, normalizeTagName } from '../tags/tag-name.js';
 import { isUuid } from '../scopes/scope-ref.js';
+import { CONTEXT_MAX_CHARS_DEFAULT, CONTEXT_MAX_CHARS_MAX, CONTEXT_MIN_CHARS } from './context-formatter.js';
 import { SEARCH_TYPES, type SearchType } from './search-plan.js';
 
 export const SEARCH_QUERY_MAX = 2000;
@@ -91,6 +92,21 @@ export const workspaceSearchRequestSchema = z.strictObject({
   ...sharedShape,
   includeGlobal: z.boolean({ error: 'Include Global must be a boolean' }).default(false),
 });
+
+/** Context requests are search requests plus the character budget of the returned text. */
+const maxChars = z
+  .number({ error: 'Max chars must be a number' })
+  .int('Max chars must be an integer')
+  .min(CONTEXT_MIN_CHARS, `Max chars must be at least ${CONTEXT_MIN_CHARS}, the size of the mandatory warning and delimiters`)
+  .max(CONTEXT_MAX_CHARS_MAX, `Max chars must be at most ${CONTEXT_MAX_CHARS_MAX}`)
+  .default(CONTEXT_MAX_CHARS_DEFAULT);
+
+/** `POST /api/global/context`. */
+export const globalContextRequestSchema = z.strictObject({ ...sharedShape, maxChars });
+/** `POST /api/workspaces/:workspaceId/context`. */
+export const workspaceContextRequestSchema = z.strictObject({ ...sharedShape, includeGlobal: workspaceSearchRequestSchema.shape.includeGlobal, maxChars });
+export type GlobalContextRequest = z.infer<typeof globalContextRequestSchema>;
+export type WorkspaceContextRequest = z.infer<typeof workspaceContextRequestSchema>;
 
 export type GlobalSearchRequest = z.infer<typeof globalSearchRequestSchema>;
 export type WorkspaceSearchRequest = z.infer<typeof workspaceSearchRequestSchema>;

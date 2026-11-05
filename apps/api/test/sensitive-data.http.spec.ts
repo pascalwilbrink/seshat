@@ -1,7 +1,26 @@
 import 'reflect-metadata';
+import type { AddressInfo } from 'node:net';
+import { type LoggerService, Module } from '@nestjs/common';
+import { APP_FILTER, APP_GUARD } from '@nestjs/core';
+import { EventEmitterModule } from '@nestjs/event-emitter';
+import { getDataSourceToken } from '@nestjs/typeorm';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TEST_ADMIN_ENV, TEST_ADMIN_PASSWORD, TEST_ADMIN_PASSWORD_HASH, TEST_SESSION_SECRET } from './fixtures/admin.js';
 import { DenyingAuthorization, InMemoryWorkspaces, type WorkspaceApp, bootWorkspaceApp } from './helpers/workspace-app.js';
+import { createApp } from '../src/app.setup.js';
+import { AuthService } from '../src/auth/auth.service.js';
+import { AuthorizationService } from '../src/auth/authorization.service.js';
+import { CLOCK, LoginRateLimiter, systemClock } from '../src/auth/login-rate-limiter.js';
+import { SESSION_COOKIE_NAME } from '../src/auth/session-token.js';
+import { SessionGuard } from '../src/auth/session.guard.js';
+import { ApiKeyStore } from '../src/api-keys/api-key.store.js';
+import { SanitizedExceptionFilter } from '../src/common/sanitized-exception.filter.js';
+import { ConfigModule } from '../src/config/config.module.js';
+import { EMBEDDING_SERVICE } from '../src/ingestion/embedding.service.js';
+import { FakeEmbeddingService } from '../src/ingestion/fake-embedding.service.js';
+import { RetrievalService } from '../src/search/retrieval.service.js';
+import { SearchController } from '../src/search/search.controller.js';
+import { SearchService } from '../src/search/search.service.js';
 import { loadConfigOrExit } from '../src/config/startup.js';
 import { loadConfig } from '../src/config/app-config.js';
 
@@ -160,6 +179,68 @@ describe('invalid configuration never prints secret values', () => {
     expect(text).not.toBe('');
     for (const s of [SENTINEL_SECRET, SENTINEL_HASH, SENTINEL_SECRET.slice(0, 20), TEST_ADMIN_PASSWORD_HASH, TEST_SESSION_SECRET]) {
       expect(text).not.toContain(s);
+    }
+  });
+});
+
+describe('search and context: queries, content and provider errors stay out of logs and errors', () => {
+  const SENTINEL_QUERY = 'SENTINEL-query-text-6d12';
+  const SENTINEL_PROVIDER = 'SENTINEL-provider-error-0b77';
+  const SENTINEL_CONTENT = 'SENTINEL-chunk-content-a41e';
+
+  it('context and search responses, errors and logs never hold them, and the budget holds', async () => {
+    vi.stubEnv('DATABASE_URL', 'postgres://u:p@localhost:5432/db');
+    for (const [k, v] of Object.entries({ ...TEST_ADMIN_ENV, NODE_ENV: 'test' })) vi.stubEnv(k, v);
+    const lines: string[] = [];
+    const push = (...a: unknown[]) => void lines.push(a.map((x) => (typeof x === 'string' ? x : JSON.stringify(x))).join(' '));
+    const logger: LoggerService = { log: push, error: push, warn: push, debug: push, verbose: push, fatal: push };
+    const embed = vi.fn(async () => {
+      throw new Error(SENTINEL_PROVIDER);
+    });
+    const row = {
+      id: 'c1', content: `${SENTINEL_CONTENT}. More text.`, ordinal: 0, location: {}, file_id: 'f1', file_name: 'a.md', collection_id: null,
+      scope: 'global', workspace_id: null, workspace_slug: null,
+    };
+    const manager = { query: vi.fn(async (sql: string) => (/pg_extension/.test(sql) ? [{ extversion: '0.8.0' }] : /FROM "chunks"/.test(sql) ? [row] : [])) };
+    const ds = { query: async () => [{ x: 1 }], transaction: async (fn: (m: unknown) => unknown) => fn(manager) };
+    @Module({
+      imports: [ConfigModule, EventEmitterModule.forRoot()],
+      controllers: [SearchController],
+      providers: [
+        { provide: CLOCK, useValue: systemClock }, AuthService, LoginRateLimiter, SessionGuard,
+        { provide: APP_GUARD, useExisting: SessionGuard }, { provide: APP_FILTER, useClass: SanitizedExceptionFilter },
+        { provide: ApiKeyStore, useValue: { findByKey: async () => null, touchLastUsed: async () => false } },
+        AuthorizationService, { provide: getDataSourceToken(), useValue: ds },
+        { provide: EMBEDDING_SERVICE, useValue: Object.assign(new FakeEmbeddingService(1536), { embed }) },
+        RetrievalService, SearchService,
+      ],
+    })
+    class Root {}
+    const a = await createApp(Root, { trustProxy: false }, logger);
+    await a.listen(0, '127.0.0.1');
+    const base = `http://127.0.0.1:${(a.getHttpServer().address() as AddressInfo).port}`;
+    const cookie = `${SESSION_COOKIE_NAME}=${a.get(AuthService).issueSessionToken()}`;
+    try {
+      const seen: string[] = [];
+      for (const [path, body] of [
+        ['/api/global/context', { query: SENTINEL_QUERY, maxChars: 900 }],
+        ['/api/global/context', { query: SENTINEL_QUERY, maxChars: 3 }],
+        ['/api/global/context', { query: SENTINEL_QUERY, [SENTINEL_QUERY]: 1 }],
+        ['/api/global/search', { query: SENTINEL_QUERY }],
+      ] as const) {
+        const res = await fetch(`${base}${path}`, { method: 'POST', headers: { 'content-type': 'application/json', cookie }, body: JSON.stringify(body) });
+        const text = await res.text();
+        seen.push(text, [...res.headers.entries()].map(([k, v]) => `${k}: ${v}`).join('\n'));
+        if (path.endsWith('context') && res.status === 200) expect(JSON.parse(text).context.length).toBeLessThanOrEqual(900);
+      }
+      const haystack = [...seen, ...lines].join('\n');
+      for (const s of [SENTINEL_QUERY, SENTINEL_PROVIDER]) expect(haystack).not.toContain(s);
+      // The retrieved content is the one thing a successful response is meant to carry.
+      expect(seen[0]).toContain(SENTINEL_CONTENT);
+      expect(lines.join('\n')).not.toContain(SENTINEL_CONTENT);
+      expect(embed).toHaveBeenCalled();
+    } finally {
+      await a.close();
     }
   });
 });
