@@ -87,3 +87,23 @@ export function expectedOutcome(action: string, held: readonly Permission[], whe
   const missing = [e.permission!, 'global:read' as Permission].filter((p) => !held.includes(p));
   return missing.length === 0 ? { status: 'allow' } : { status: 403, message: `Missing permission: ${missing.join(', ')}` };
 }
+
+/**
+ * Independent statement of the search rule (AC-2/AC-3): ALL of `search`, each requested type's read permission and,
+ * for Global (the Global route, or `includeGlobal` on a Workspace route), `global:read`. Another Workspace is a 404
+ * before anything else. Not derived from the production mapping and not the catalog's any-of semantics.
+ */
+export function expectedSearchOutcome(
+  held: readonly Permission[],
+  where: 'own' | 'other' | 'global',
+  types: readonly ('files' | 'memories')[],
+  includeGlobal: boolean,
+): Outcome {
+  if (where === 'other') return { status: 404 };
+  const need: Permission[] = ['search'];
+  if (types.includes('files')) need.push('files:read');
+  if (types.includes('memories')) need.push('memories:read');
+  if (where === 'global' || includeGlobal) need.push('global:read');
+  const missing = need.filter((p) => !held.includes(p));
+  return missing.length === 0 ? { status: 'allow' } : { status: 403, message: `Missing permission: ${missing.join(', ')}` };
+}
