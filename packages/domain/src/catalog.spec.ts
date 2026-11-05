@@ -63,7 +63,7 @@ describe('action catalog', () => {
 
   it('matches the naming of the spec examples and keeps search a read', () => {
     expect(getActionRequirement('file.upload')).toEqual({ classification: 'write', permission: 'files:write', concealGlobal: true });
-    expect(getActionRequirement('memory.forget')).toEqual({ classification: 'delete', permission: 'memories:delete' });
+    expect(getActionRequirement('memory.forget')).toEqual({ classification: 'delete', permission: 'memories:delete', concealGlobal: true });
     expect(getActionRequirement('search.query')).toEqual({ classification: 'read', permission: 'search' });
   });
 
@@ -100,10 +100,10 @@ describe('action catalog', () => {
     }
   });
 
-  it('conceals Global for every files, Collections and Tags action and for nothing else', () => {
+  it('conceals Global for every files, Collections and Tags action and the Memory write actions, and for nothing else', () => {
     for (const action of ACTIONS) {
       const req = getActionRequirement(action) as { concealGlobal?: boolean };
-      expect(Boolean(req.concealGlobal), action).toBe(/^(file|collection|tag)\./.test(action));
+      expect(Boolean(req.concealGlobal), action).toBe(/^(file|collection|tag)\./.test(action) || /^memory\.(remember|update|forget|supersede)$/.test(action));
     }
   });
 

@@ -114,20 +114,7 @@ export class TagsService {
   async replaceFileTags(manager: EntityManager, scope: ScopeRef, fileId: string, rawNames: unknown): Promise<string[]> {
     const names = normalizeTagNames(rawNames).sort();
     const scopeKey = scopeKeyOf(scope);
-    let ids: string[] = [];
-    if (names.length > 0) {
-      const { scope: scopeValue, workspaceId } = scopeColumns(scope);
-      await manager.query(
-        `INSERT INTO tags (scope, workspace_id, name) SELECT $1, $2::uuid, n FROM unnest($3::text[]) AS n
-         ON CONFLICT ON CONSTRAINT "UQ_tags_scope_key_name" DO NOTHING`,
-        [scopeValue, workspaceId, names],
-      );
-      const found = (await manager.query(
-        `SELECT id FROM tags WHERE scope_key = $1 AND name = ANY($2::text[]) ORDER BY id FOR SHARE`,
-        [scopeKey, names],
-      )) as { id: string }[];
-      ids = found.map((r) => r.id);
-    }
+    const ids = await this.ensureTagIds(manager, scope, names);
     await manager.query(`DELETE FROM file_tags WHERE file_id = $1 AND scope_key = $2 AND NOT (tag_id = ANY($3::uuid[]))`, [
       fileId,
       scopeKey,
@@ -141,5 +128,69 @@ export class TagsService {
       );
     }
     return names;
+  }
+
+  /**
+   * INTERNAL. Replaces the Tags of a Memory inside the caller's transaction, exactly like `replaceFileTags` (same
+   * normalization and race-safe shared creation). No authorization here: the Memories service has already authorized.
+   * Returns the resulting Tag names, sorted.
+   */
+  async replaceMemoryTags(manager: EntityManager, scope: ScopeRef, memoryId: string, rawNames: unknown): Promise<string[]> {
+    const names = normalizeTagNames(rawNames).sort();
+    const scopeKey = scopeKeyOf(scope);
+    const ids = await this.ensureTagIds(manager, scope, names);
+    await manager.query(`DELETE FROM memory_tags WHERE memory_id = $1 AND scope_key = $2 AND NOT (tag_id = ANY($3::uuid[]))`, [
+      memoryId,
+      scopeKey,
+      ids,
+    ]);
+    await this.linkMemoryTags(manager, scopeKey, memoryId, ids);
+    return names;
+  }
+
+  /**
+   * INTERNAL. Adds the given Tag names to a Memory without removing existing ones (used when a duplicate create reuses
+   * an existing Memory). Returns the Memory's resulting Tag names, sorted.
+   */
+  async unionMemoryTags(manager: EntityManager, scope: ScopeRef, memoryId: string, rawNames: unknown): Promise<string[]> {
+    const names = normalizeTagNames(rawNames);
+    const scopeKey = scopeKeyOf(scope);
+    const ids = await this.ensureTagIds(manager, scope, names);
+    await this.linkMemoryTags(manager, scopeKey, memoryId, ids);
+    const rows = (await manager.query(
+      `SELECT t.name FROM memory_tags mt JOIN tags t ON t.id = mt.tag_id AND t.scope_key = mt.scope_key
+       WHERE mt.memory_id = $1 AND mt.scope_key = $2 ORDER BY t.name`,
+      [memoryId, scopeKey],
+    )) as { name: string }[];
+    return rows.map((r) => r.name);
+  }
+
+  private async linkMemoryTags(manager: EntityManager, scopeKey: string, memoryId: string, ids: string[]): Promise<void> {
+    if (ids.length === 0) return;
+    await manager.query(
+      `INSERT INTO memory_tags (memory_id, tag_id, scope_key) SELECT $1::uuid, t, $2 FROM unnest($3::uuid[]) AS t
+       ON CONFLICT ("memory_id", "tag_id") DO NOTHING`,
+      [memoryId, scopeKey, ids],
+    );
+  }
+
+  /**
+   * Race safety: creation is `INSERT ... ON CONFLICT DO NOTHING` on the per-scope unique name, so concurrent
+   * assignments of the same new name both succeed with one row; the ids are then read with `FOR SHARE`, which keeps a
+   * concurrent delete or rename of those Tags from slipping in before the joins are written.
+   */
+  private async ensureTagIds(manager: EntityManager, scope: ScopeRef, names: string[]): Promise<string[]> {
+    if (names.length === 0) return [];
+    const { scope: scopeValue, workspaceId } = scopeColumns(scope);
+    await manager.query(
+      `INSERT INTO tags (scope, workspace_id, name) SELECT $1, $2::uuid, n FROM unnest($3::text[]) AS n
+       ON CONFLICT ON CONSTRAINT "UQ_tags_scope_key_name" DO NOTHING`,
+      [scopeValue, workspaceId, names],
+    );
+    const found = (await manager.query(
+      `SELECT id FROM tags WHERE scope_key = $1 AND name = ANY($2::text[]) ORDER BY id FOR SHARE`,
+      [scopeKeyOf(scope), names],
+    )) as { id: string }[];
+    return found.map((r) => r.id);
   }
 }
