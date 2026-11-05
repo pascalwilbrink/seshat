@@ -1,0 +1,22 @@
+# VCS and environment files (including nested variants); never sent to the build context.
+.git
+**/.env
+**/.env.*
+!**/.env.example
+# Dependencies and build/test output (rebuilt inside the image).
+**/node_modules
+**/dist
+**/.next
+**/.next-smoke
+**/.next-browser
+**/coverage
+**/out
+**/*.tsbuildinfo
+**/*.log
+apps/api/data
+# Not needed to build.
+.github
+docs
+**/*.md
+!pnpm-lock.yaml
+.DS_Store
