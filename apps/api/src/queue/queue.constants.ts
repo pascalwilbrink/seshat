@@ -3,7 +3,9 @@ export const QUEUE_SCHEMA = 'pgboss';
 
 /** Queue that carries one job per file to ingest. */
 export const INGEST_FILE_QUEUE = 'ingest-file';
-export type QueueName = typeof INGEST_FILE_QUEUE;
+/** Queue that carries one job per Memory embedding generation (payload: scope key, Memory id, generation; never text). */
+export const EMBED_MEMORY_QUEUE = 'embed-memory';
+export type QueueName = typeof INGEST_FILE_QUEUE | typeof EMBED_MEMORY_QUEUE;
 
 /**
  * pg-boss `retryLimit` counts retries after the first attempt (verified against the installed version in

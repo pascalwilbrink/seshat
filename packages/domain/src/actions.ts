@@ -96,6 +96,8 @@ export const ACTION_CATALOG = {
   'memory.update': res('write', 'memories:write'),
   'memory.forget': res('delete', 'memories:delete'),
   'memory.supersede': res('write', 'memories:write'),
+  // Admin only: re-queues a failed embedding.
+  'memory.retryEmbedding': ADMIN,
   // Future: search is a read operation.
   'search.query': perm('read', 'search'),
 } as const satisfies Record<string, ActionRequirement>;

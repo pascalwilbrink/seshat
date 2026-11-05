@@ -46,9 +46,12 @@ export interface AppConfig {
   embeddingModel: string;
   /** Embedding vector dimension (positive integer). Default: 1536. Must match the physical `chunks` column. */
   embeddingDimension: number;
+  /** Minimum cosine similarity (finite, 0 to 1) for similar-memory hints on create. Default: 0.9. */
+  memorySimilarityHint: number;
 }
 
 export const DEFAULT_INGESTION_CONCURRENCY = 2;
+export const DEFAULT_MEMORY_SIMILARITY_HINT = 0.9;
 export const DEFAULT_CHUNK_SIZE_CHARS = 2000;
 export const DEFAULT_CHUNK_OVERLAP_CHARS = 200;
 export const DEFAULT_EMBEDDING_MODEL = 'text-embedding-3-small';
@@ -272,6 +275,17 @@ export function loadConfig(env: EnvSource): AppConfig {
 
   const embeddingDimension = positiveInt('EMBEDDING_DIMENSION', DEFAULT_EMBEDDING_DIMENSION);
 
+  let memorySimilarityHint = DEFAULT_MEMORY_SIMILARITY_HINT;
+  const rawHint = get('MEMORY_SIMILARITY_HINT');
+  if (rawHint !== undefined) {
+    const n = /^(\d+(\.\d*)?|\.\d+)$/.test(rawHint.trim()) ? Number(rawHint.trim()) : NaN;
+    if (Number.isFinite(n) && n >= 0 && n <= 1) {
+      memorySimilarityHint = n;
+    } else {
+      problems.push({ variable: 'MEMORY_SIMILARITY_HINT', reason: 'must be a number between 0 and 1' });
+    }
+  }
+
   if (problems.length > 0) throw new ConfigError(problems);
   return {
     nodeEnv,
@@ -291,5 +305,6 @@ export function loadConfig(env: EnvSource): AppConfig {
     openaiApiKey,
     embeddingModel,
     embeddingDimension,
+    memorySimilarityHint,
   };
 }

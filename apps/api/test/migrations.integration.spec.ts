@@ -38,6 +38,7 @@ describeIntegration('migrations (real PostgreSQL)', () => {
       'CreateStorageCleanupIntents1762700000000',
       'CreateChunks1762800000000',
       'CreateMemories1762900000000',
+      'AddMemoryEmbeddingGeneration1763000000000',
     ]);
   });
 
@@ -52,6 +53,7 @@ describeIntegration('migrations (real PostgreSQL)', () => {
       'CreateStorageCleanupIntents1762700000000',
       'CreateChunks1762800000000',
       'CreateMemories1762900000000',
+      'AddMemoryEmbeddingGeneration1763000000000',
     ]);
     expect(await vectorInstalled()).toBe(true);
 
@@ -74,6 +76,7 @@ describeIntegration('migrations (real PostgreSQL)', () => {
     await ds.undoLastMigration({ transaction: 'each' });
     await ds.undoLastMigration({ transaction: 'each' });
     await ds.undoLastMigration({ transaction: 'each' });
+    await ds.undoLastMigration({ transaction: 'each' });
     const tables = await iso.query(
       `SELECT table_name FROM information_schema.tables WHERE table_schema = '${iso.schema}'`,
     );
@@ -84,7 +87,7 @@ describeIntegration('migrations (real PostgreSQL)', () => {
     expect(await vectorInstalled()).toBe(false);
 
     const again = await ds.runMigrations({ transaction: 'each' });
-    expect(again).toHaveLength(7);
+    expect(again).toHaveLength(8);
     expect(await vectorInstalled()).toBe(true);
   });
 

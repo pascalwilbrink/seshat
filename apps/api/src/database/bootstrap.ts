@@ -45,7 +45,8 @@ export async function initializeDatabase(
   // API-only check after migrations (CLI migration commands do not go through here); refuses before the app serves.
   if (options.embeddingDimension !== undefined) {
     try {
-      await assertEmbeddingDimension(ds, options.embeddingDimension);
+      await assertEmbeddingDimension(ds, options.embeddingDimension, 'chunks');
+      await assertEmbeddingDimension(ds, options.embeddingDimension, 'memories');
     } catch (err) {
       if (err instanceof EmbeddingDimensionError) throw err;
       throw new DatabaseBootstrapError('connect', safeCode(err));

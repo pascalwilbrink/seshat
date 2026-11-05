@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { PgBoss, type Job } from 'pg-boss';
 import {
+  EMBED_MEMORY_QUEUE,
   INGEST_EXPIRE_SECONDS,
   INGEST_FILE_QUEUE,
   INGEST_MAX_ATTEMPTS,
@@ -53,6 +54,25 @@ export interface IngestFileJobData {
   fileId: string;
 }
 
+/** Payload of an `embed-memory` job: identity and generation token only, never text or vectors. */
+export interface EmbedMemoryJobData {
+  /** `global` or the Workspace id. */
+  scope: string;
+  memoryId: string;
+  /** `memories.embedding_generation` the job was created for. */
+  generation: number;
+}
+
+export interface EmbedMemoryJobContext extends EmbedMemoryJobData {
+  /** 1-based attempt number. */
+  attempt: number;
+  maxAttempts: number;
+  /** True when a failure of this attempt is final (pg-boss will not retry it). */
+  isFinalAttempt: boolean;
+}
+
+export type EmbedMemoryHandler = (context: EmbedMemoryJobContext) => Promise<void>;
+
 export type EnqueueResult = 'queued' | 'already_queued';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -84,7 +104,7 @@ export class QueueService implements OnApplicationBootstrap, BeforeApplicationSh
   private boss: BossLike | undefined;
   private started = false;
   private stopping = false;
-  private readonly handlers = new Map<QueueName, IngestFileHandler>();
+  private readonly handlers = new Map<QueueName, (job: Job<any>) => Promise<void>>();
   private readonly workerIds = new Map<QueueName, string>();
 
   constructor(
@@ -110,8 +130,34 @@ export class QueueService implements OnApplicationBootstrap, BeforeApplicationSh
    */
   async registerWorker(queue: QueueName, handler: IngestFileHandler): Promise<void> {
     if (this.handlers.has(queue)) throw new Error(`A worker is already registered for queue ${queue}`);
-    this.handlers.set(queue, handler);
-    if (this.started) await this.startWorker(queue, handler);
+    const run = (job: Job<any>) => runJob(job, handler);
+    this.handlers.set(queue, run);
+    if (this.started) await this.startWorker(queue, run);
+  }
+
+  /** Registers the processor of the `embed-memory` queue (once). Same start semantics as `registerWorker`. */
+  async registerMemoryWorker(handler: EmbedMemoryHandler): Promise<void> {
+    if (this.handlers.has(EMBED_MEMORY_QUEUE)) throw new Error(`A worker is already registered for queue ${EMBED_MEMORY_QUEUE}`);
+    const run = (job: Job<any>) => runMemoryJob(job, handler);
+    this.handlers.set(EMBED_MEMORY_QUEUE, run);
+    if (this.started) await this.startWorker(EMBED_MEMORY_QUEUE, run);
+  }
+
+  /**
+   * Queues an `embed-memory` job. The queue uses the standard policy (no singleton): a newer generation must always
+   * be able to queue its own job, and stale or duplicate jobs are harmless because every write is generation-guarded.
+   */
+  async enqueueMemoryEmbedding(data: EmbedMemoryJobData): Promise<void> {
+    if (!UUID.test(data.memoryId) || !(data.scope === 'global' || UUID.test(data.scope)) || !Number.isSafeInteger(data.generation) || data.generation < 0) {
+      throw new TypeError('invalid memory embedding payload');
+    }
+    if (!this.boss || !this.started || this.stopping) throw new QueueUnavailableError('not_started');
+    try {
+      const payload: EmbedMemoryJobData = { scope: data.scope, memoryId: data.memoryId, generation: data.generation };
+      await this.boss.send(EMBED_MEMORY_QUEUE, payload);
+    } catch {
+      throw new QueueUnavailableError('enqueue_failed');
+    }
   }
 
   /**
@@ -153,9 +199,14 @@ export class QueueService implements OnApplicationBootstrap, BeforeApplicationSh
         retryDelayMax: INGEST_RETRY_DELAY_MAX_SECONDS,
         expireInSeconds: INGEST_EXPIRE_SECONDS,
       };
-      await boss.createQueue(INGEST_FILE_QUEUE, { policy: 'exclusive', ...queueOptions });
-      // createQueue keeps an existing queue untouched: apply changed settings on later starts.
-      await boss.updateQueue(INGEST_FILE_QUEUE, { retryLimit: queueOptions.retryLimit, retryDelay: queueOptions.retryDelay, retryBackoff: true, retryDelayMax: queueOptions.retryDelayMax, expireInSeconds: queueOptions.expireInSeconds });
+      for (const [queue, policy] of [
+        [INGEST_FILE_QUEUE, 'exclusive'],
+        [EMBED_MEMORY_QUEUE, 'standard'],
+      ] as const) {
+        await boss.createQueue(queue, { policy, ...queueOptions });
+        // createQueue keeps an existing queue untouched: apply changed settings on later starts.
+        await boss.updateQueue(queue, { retryLimit: queueOptions.retryLimit, retryDelay: queueOptions.retryDelay, retryBackoff: true, retryDelayMax: queueOptions.retryDelayMax, expireInSeconds: queueOptions.expireInSeconds });
+      }
       this.started = true;
       for (const [queue, handler] of this.handlers) await this.startWorker(queue, handler);
     } catch (err) {
@@ -167,10 +218,10 @@ export class QueueService implements OnApplicationBootstrap, BeforeApplicationSh
     this.logger.log(`Queue started (schema ${this.options.schema}, concurrency ${this.options.ingestionConcurrency})`);
   }
 
-  private async startWorker(queue: QueueName, handler: IngestFileHandler): Promise<void> {
+  private async startWorker(queue: QueueName, handler: (job: Job<any>) => Promise<void>): Promise<void> {
     const boss = this.boss;
     if (!boss) throw new QueueUnavailableError('not_started');
-    const id = await boss.work<IngestFileJobData>(
+    const id = await boss.work<unknown>(
       queue,
       {
         localConcurrency: this.options.ingestionConcurrency,
@@ -178,7 +229,7 @@ export class QueueService implements OnApplicationBootstrap, BeforeApplicationSh
         pollingIntervalSeconds: this.options.pollingIntervalSeconds ?? 2,
       },
       async (jobs) => {
-        for (const job of jobs) await runJob(job, handler);
+        for (const job of jobs) await handler(job);
       },
     );
     this.workerIds.set(queue, id);
@@ -206,6 +257,23 @@ async function runJob(job: Job<IngestFileJobData>, handler: IngestFileHandler): 
   const attempt = job.retryCount + 1;
   try {
     await handler({ fileId, attempt, maxAttempts: INGEST_MAX_ATTEMPTS, isFinalAttempt: attempt >= INGEST_MAX_ATTEMPTS });
+  } catch (err) {
+    throw toQueueJobFailure(err);
+  }
+}
+
+async function runMemoryJob(job: Job<EmbedMemoryJobData>, handler: EmbedMemoryHandler): Promise<void> {
+  const d = job.data as Partial<EmbedMemoryJobData> | undefined;
+  if (
+    typeof d?.memoryId !== 'string' || !UUID.test(d.memoryId) ||
+    typeof d.scope !== 'string' || !(d.scope === 'global' || UUID.test(d.scope)) ||
+    typeof d.generation !== 'number' || !Number.isSafeInteger(d.generation) || d.generation < 0
+  ) {
+    throw new QueueJobFailure('invalid_payload');
+  }
+  const attempt = job.retryCount + 1;
+  try {
+    await handler({ scope: d.scope, memoryId: d.memoryId, generation: d.generation, attempt, maxAttempts: INGEST_MAX_ATTEMPTS, isFinalAttempt: attempt >= INGEST_MAX_ATTEMPTS });
   } catch (err) {
     throw toQueueJobFailure(err);
   }
