@@ -21,6 +21,7 @@ import { FakeEmbeddingService } from '../src/ingestion/fake-embedding.service.js
 import { RetrievalService } from '../src/search/retrieval.service.js';
 import { SearchController } from '../src/search/search.controller.js';
 import { SearchService } from '../src/search/search.service.js';
+import { RelatedMemoriesService } from '../src/search/related.service.js';
 import { loadConfigOrExit } from '../src/config/startup.js';
 import { loadConfig } from '../src/config/app-config.js';
 
@@ -212,7 +213,7 @@ describe('search and context: queries, content and provider errors stay out of l
         { provide: ApiKeyStore, useValue: { findByKey: async () => null, touchLastUsed: async () => false } },
         AuthorizationService, { provide: getDataSourceToken(), useValue: ds },
         { provide: EMBEDDING_SERVICE, useValue: Object.assign(new FakeEmbeddingService(1536), { embed }) },
-        RetrievalService, SearchService,
+        RetrievalService, SearchService, RelatedMemoriesService,
       ],
     })
     class Root {}
