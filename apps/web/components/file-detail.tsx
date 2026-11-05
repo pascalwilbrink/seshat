@@ -6,7 +6,7 @@ import type { CollectionDto, FileDto } from '@/lib/api-types';
 import { formatSize, parseTagInput } from '@/lib/files';
 import { readFormError } from '@/lib/form-errors';
 import { formatDate } from '@/lib/files';
-import { ChunkPreview } from './chunk-preview';
+import { ChunkPreview, type ChunkFocus } from './chunk-preview';
 import { FormField } from './form-field';
 import { ReindexButton } from './reindex-button';
 import { StatusBadge } from './status-badge';
@@ -33,6 +33,7 @@ export function FileDetail({
   onClose,
   onSaved,
   onReindexed,
+  focusChunk = null,
 }: {
   base: string;
   file: FileDto;
@@ -40,6 +41,8 @@ export function FileDetail({
   onClose: () => void;
   onSaved: (file: FileDto) => void;
   onReindexed: (file: FileDto) => void;
+  /** The chunk a search result cited; the preview loads pages until it shows and marks it. */
+  focusChunk?: ChunkFocus | null;
 }) {
   const [name, setName] = useState(file.name);
   const [collectionId, setCollectionId] = useState(file.collectionId ?? '');
@@ -158,7 +161,7 @@ export function FileDetail({
           </Button>
         </div>
       </form>
-      <ChunkPreview base={base} fileId={file.id} reloadKey={`${file.ingestionStatus}|${file.indexedAt ?? ''}`} />
+      <ChunkPreview base={base} fileId={file.id} reloadKey={`${file.ingestionStatus}|${file.indexedAt ?? ''}`} focus={focusChunk} />
     </aside>
   );
 }

@@ -43,12 +43,12 @@ function preview(m: MemoryDto): string {
 }
 
 /** Memories of Global or one Workspace: list, create, edit, supersede, retry embedding and forget. All Memory text is untrusted and rendered as text only. */
-export function MemoriesView({ scope }: { scope: Scope }) {
-  if (scope.kind === 'global') return <MemoriesPanel key="global" base="/api/global" label="Global" />;
-  return <WorkspaceMemories slug={scope.slug} />;
+export function MemoriesView({ scope, focusMemoryId = null }: { scope: Scope; focusMemoryId?: string | null }) {
+  if (scope.kind === 'global') return <MemoriesPanel key={`global|${focusMemoryId ?? ''}`} base="/api/global" label="Global" focusMemoryId={focusMemoryId} />;
+  return <WorkspaceMemories slug={scope.slug} focusMemoryId={focusMemoryId} />;
 }
 
-function WorkspaceMemories({ slug }: { slug: string }) {
+function WorkspaceMemories({ slug, focusMemoryId }: { slug: string; focusMemoryId: string | null }) {
   const { state, reload } = useWorkspaces();
   if (state.status === 'loading') {
     return (
@@ -82,7 +82,7 @@ function WorkspaceMemories({ slug }: { slug: string }) {
     );
   }
   // Keyed by id: another Workspace never inherits a list, filters or an open detail.
-  return <MemoriesPanel key={workspace.id} base={`/api/workspaces/${encodeURIComponent(workspace.id)}`} label={`Workspace · ${workspace.name}`} />;
+  return <MemoriesPanel key={`${workspace.id}|${focusMemoryId ?? ''}`} base={`/api/workspaces/${encodeURIComponent(workspace.id)}`} label={`Workspace · ${workspace.name}`} focusMemoryId={focusMemoryId} />;
 }
 
 interface Filters {
@@ -98,14 +98,15 @@ type ListState =
   | { status: 'error'; message: string; session: boolean }
   | { status: 'ready'; items: MemoryDto[]; nextCursor: string | null };
 
-function MemoriesPanel({ base, label }: { base: string; label: string }) {
+function MemoriesPanel({ base, label, focusMemoryId }: { base: string; label: string; focusMemoryId: string | null }) {
   const memoriesBase = `${base}/memories`;
   const [draft, setDraft] = useState<Filters>(NO_FILTERS);
   const [applied, setApplied] = useState<Filters>(NO_FILTERS);
   const [list, setList] = useState<ListState>({ status: 'loading' });
   const [more, setMore] = useState<{ pending: boolean; error: string | null }>({ pending: false, error: null });
   const [tags, setTags] = useState<TagDto[]>([]);
-  const [selected, setSelected] = useState<string | null>(null);
+  // A search link opens the Memory by id in this scope; it need not be on the loaded list page.
+  const [selected, setSelected] = useState<string | null>(focusMemoryId);
   const [compose, setCompose] = useState<{ supersedes: string | null } | null>(null);
   const [created, setCreated] = useState<CreateMemoryResultDto | null>(null);
   const [flash, setFlash] = useState<string | null>(null);

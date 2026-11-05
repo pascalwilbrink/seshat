@@ -30,14 +30,14 @@ export const NAV_GROUPS: readonly NavGroup[] = [
 
 /**
  * The one place that declares navigation. To add an area, add an entry here and create its route.
- * Overview, Memories and Settings are listed for now; Files, Collections and
+ * Overview, Search, Memories and Settings are listed for now; Files, Collections and
  * API Keys keep their direct routes but are not listed.
  */
 export const NAV_AREAS: readonly NavArea[] = [
   { id: 'overview', label: 'Overview', group: 'knowledge', icon: LayoutDashboard, route: 'overview', scopes: ['global', 'workspace'], available: true },
   { id: 'files', label: 'Files', group: 'knowledge', icon: FileText, route: 'files', scopes: ['global', 'workspace'], available: false },
   { id: 'collections', label: 'Collections', group: 'knowledge', icon: FolderOpen, route: 'collections', scopes: ['global', 'workspace'], available: false },
-  { id: 'search', label: 'Search', group: 'knowledge', icon: Search, route: 'search', scopes: ['global', 'workspace'], available: false },
+  { id: 'search', label: 'Search', group: 'knowledge', icon: Search, route: 'search', scopes: ['global', 'workspace'], available: true },
   { id: 'memories', label: 'Memories', group: 'knowledge', icon: Brain, route: 'memories', scopes: ['global', 'workspace'], available: true },
   { id: 'api-keys', label: 'API Keys', group: 'developer', icon: KeyRound, route: 'api-keys', scopes: ['workspace'], available: false },
   { id: 'mcp', label: 'MCP', group: 'developer', icon: Plug, route: 'mcp', scopes: ['workspace'], available: false },

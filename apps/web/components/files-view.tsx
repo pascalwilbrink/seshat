@@ -15,6 +15,7 @@ import {
 import { formatDate, formatSize } from '@/lib/files';
 import { readFormError } from '@/lib/form-errors';
 import { GLOBAL_OVERVIEW_PATH, type Scope } from '@/lib/scope';
+import type { FileFocus } from '@/lib/search';
 import { FileDetail } from './file-detail';
 import { ReindexButton } from './reindex-button';
 import { StatusBadge } from './status-badge';
@@ -38,12 +39,15 @@ async function errorText(res: Response): Promise<string> {
 }
 
 /** Files of Global or one Workspace. Names, tags and types are untrusted text; originals are only ever downloaded. */
-export function FilesView({ scope }: { scope: Scope }) {
-  if (scope.kind === 'global') return <FilesPanel key="global" base="/api/global" label="Global" />;
-  return <WorkspaceFiles slug={scope.slug} />;
+export function FilesView({ scope, focus = null }: { scope: Scope; focus?: FileFocus | null }) {
+  if (scope.kind === 'global') return <FilesPanel key={`global|${focusKey(focus)}`} base="/api/global" label="Global" focus={focus} />;
+  return <WorkspaceFiles slug={scope.slug} focus={focus} />;
 }
 
-function WorkspaceFiles({ slug }: { slug: string }) {
+/** A search link opens one file (and chunk): each distinct target starts a fresh panel with that file selected. */
+const focusKey = (f: FileFocus | null) => (f ? `${f.fileId}|${f.chunkId ?? ''}|${f.ordinal ?? ''}` : '');
+
+function WorkspaceFiles({ slug, focus }: { slug: string; focus: FileFocus | null }) {
   const { state, reload } = useWorkspaces();
   if (state.status === 'loading') {
     return (
@@ -77,7 +81,7 @@ function WorkspaceFiles({ slug }: { slug: string }) {
     );
   }
   // Keyed by id: another Workspace never inherits a list, an upload queue or an open panel.
-  return <FilesPanel key={workspace.id} base={`/api/workspaces/${encodeURIComponent(workspace.id)}`} label={`Workspace · ${workspace.name}`} />;
+  return <FilesPanel key={`${workspace.id}|${focusKey(focus)}`} base={`/api/workspaces/${encodeURIComponent(workspace.id)}`} label={`Workspace · ${workspace.name}`} focus={focus} />;
 }
 
 interface Filters {
@@ -93,7 +97,7 @@ type ListState =
   | { status: 'error'; message: string; session: boolean }
   | { status: 'ready'; items: FileDto[]; nextCursor: string | null };
 
-function FilesPanel({ base, label }: { base: string; label: string }) {
+function FilesPanel({ base, label, focus }: { base: string; label: string; focus: FileFocus | null }) {
   const filesBase = `${base}/files`;
   const [draft, setDraft] = useState<Filters>(NO_FILTERS);
   const [applied, setApplied] = useState<Filters>(NO_FILTERS);
@@ -101,7 +105,9 @@ function FilesPanel({ base, label }: { base: string; label: string }) {
   const [more, setMore] = useState<{ pending: boolean; error: string | null }>({ pending: false, error: null });
   const [collections, setCollections] = useState<CollectionDto[]>([]);
   const [tags, setTags] = useState<TagDto[]>([]);
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(focus?.fileId ?? null);
+  // The file a search result points at may not be on the loaded page; it is read by id from this scope only.
+  const [focusedFile, setFocusedFile] = useState<FileDto | null>(null);
   const [deleting, setDeleting] = useState<FileDto | null>(null);
   const [notice, setNotice] = useState('');
   const latest = useRef(0);
@@ -165,6 +171,24 @@ function FilesPanel({ base, label }: { base: string; label: string }) {
   useEffect(() => {
     void loadOptions();
   }, [loadOptions]);
+  const focusFileId = focus?.fileId;
+  useEffect(() => {
+    if (!focusFileId) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await apiFetch(`${filesBase}/${encodeURIComponent(focusFileId)}`);
+        if (cancelled || !mounted.current) return;
+        if (res.ok) setFocusedFile((await res.json()) as FileDto);
+        else setNotice(res.status === 404 ? 'The file you opened no longer exists or is not available here.' : await errorText(res));
+      } catch {
+        if (!cancelled && mounted.current) setNotice(NETWORK);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [focusFileId, filesBase]);
 
   // Poll only the visible files that are still pending or processing. Each tick re-reads those files one by one and
   // merges them into the loaded list (pages and filters stay as they are). The loop ends, and its timer and any
@@ -247,6 +271,7 @@ function FilesPanel({ base, label }: { base: string; label: string }) {
   const updateFile = (next: FileDto) => {
     if (!mounted.current) return;
     setList((l) => (l.status === 'ready' ? { ...l, items: l.items.map((i) => (i.id === next.id ? next : i)) } : l));
+    setFocusedFile((c) => (c && c.id === next.id ? next : c));
   };
   const refresh = () => {
     void loadFirst(applied, true);
@@ -254,7 +279,7 @@ function FilesPanel({ base, label }: { base: string; label: string }) {
   };
   const filtered = Boolean(applied.collectionId || applied.tag || applied.status || applied.name.trim());
   const collectionName = (id: string | null) => (id ? (collections.find((c) => c.id === id)?.name ?? 'Unknown Collection') : null);
-  const selectedFile = list.status === 'ready' ? (list.items.find((f) => f.id === selected) ?? null) : null;
+  const selectedFile = (list.status === 'ready' ? list.items.find((f) => f.id === selected) : undefined) ?? (focusedFile && focusedFile.id === selected ? focusedFile : null);
 
   return (
     <section>
@@ -407,6 +432,7 @@ function FilesPanel({ base, label }: { base: string; label: string }) {
           key={selectedFile.id}
           base={filesBase}
           file={selectedFile}
+          focusChunk={focus && focus.fileId === selectedFile.id ? { chunkId: focus.chunkId, ordinal: focus.ordinal } : null}
           collections={collections}
           onClose={() => setSelected(null)}
           onSaved={(next) => {
