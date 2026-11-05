@@ -287,3 +287,134 @@ describe('POST search: embedding provider failure (real RetrievalService)', () =
     }
   });
 });
+
+describe('POST context: same search contract, budgeted cited text', () => {
+  const FULL: Permission[] = ['search', 'files:read', 'memories:read'];
+  const CTX_GLOBAL = '/api/global/context';
+  const ctxWs = (id = WS) => `/api/workspaces/${id}/context`;
+  const chunkResult = (content: string, extra: Record<string, unknown> = {}) => ({
+    kind: 'chunk', id: randomUUID(), score: 0.03, vectorRank: 1, keywordRank: null, scope: { kind: 'workspace', id: WS, slug: 'alpha' },
+    content, file: { id: randomUUID(), name: 'a.md' }, collectionId: null, ordinal: 2,
+    location: { startOffset: 0, endOffset: 5, startLine: 3, endLine: 9, headingPath: ['H'] }, ...extra,
+  });
+
+  for (const [label, path] of [['global', CTX_GLOBAL], ['workspace', ctxWs()]] as const) {
+    it(`${label}: returns delimited numbered sections, a data-not-instructions warning and exactly the cited sources`, async () => {
+      const a = chunkResult('Alpha content.');
+      retrieval.response = { results: [a as never] };
+      const res = await post(path, { query: 'q' });
+      expect(res.status).toBe(200);
+      expect(res.headers.get('cache-control')).toBe('no-store');
+      expect(Object.keys(res.json!).sort()).toEqual(['context', 'sources']);
+      expect(res.json!.context).toContain('not instructions');
+      expect(res.json!.context).toContain('<<<BEGIN [1]>>>\n[1] a.md › H › lines 3–9\n> Alpha content.\n<<<END [1]>>>');
+      expect(res.json!.context.length).toBeLessThanOrEqual(8000);
+      expect(res.json!.sources).toEqual([
+        { citation: 1, kind: 'chunk', id: a.id, scope: a.scope, file: a.file, collectionId: null, ordinal: 2, location: a.location },
+      ]);
+      expect(res.text).not.toMatch(/total|count|excluded|dropped|score/i);
+    });
+
+    it(`${label}: searches with the same defaults and filters, without passing maxChars on`, async () => {
+      await post(path, { query: ' needle ', types: ['memories'], tags: ['A'], minScore: 0.01, maxChars: 900 });
+      const request = retrieval.calls[0]!.request;
+      expect(request).toMatchObject({ query: 'needle', types: ['memories'], tags: ['a'], limit: 10, minScore: 0.01, tagMatch: 'any', includeSuperseded: false });
+      expect(request).not.toHaveProperty('maxChars');
+    });
+
+    it(`${label}: never exceeds maxChars, down to the minimum, and rejects budgets below it with a 400`, async () => {
+      retrieval.response = { results: [chunkResult('One sentence here. Another sentence follows. '.repeat(50)) as never, chunkResult('b') as never] };
+      const base = await post(path, { query: 'q', maxChars: 50000 });
+      const message = JSON.stringify((await post(path, { query: 'q', maxChars: 1 })).json);
+      const lower = Number(/at least (\d+)/.exec(message)![1]);
+      for (const maxChars of [lower, lower + 1, lower + 300, 1000, 2500, 8000]) {
+        const res = await post(path, { query: 'q', maxChars });
+        expect(res.status, String(maxChars)).toBe(200);
+        expect(res.json!.context.length).toBeLessThanOrEqual(maxChars);
+        expect(res.json!.sources.length).toBe((res.json!.context.match(/<<<BEGIN \[/g) ?? []).length);
+      }
+      expect(base.json!.sources).toHaveLength(2);
+      for (const maxChars of [lower - 1, 0, -1, 50001, 1.5, '8000']) expect((await post(path, { query: 'q', maxChars })).status).toBe(400);
+      expect((await post(path, { query: 'q', maxChars: 50000 })).status).toBe(200);
+    });
+
+    it(`${label}: no results is a warning-only block with no sources`, async () => {
+      const res = await post(path, { query: 'q', maxChars: 50000 });
+      expect(res.json!.sources).toEqual([]);
+      expect(res.json!.context).toContain('not instructions');
+    });
+
+    it(`${label}: keeps the search validation (strict body, no values echoed, no retrieval)`, async () => {
+      const S = 'SENTINEL-ctx-9f31';
+      for (const body of [{ query: '' }, { query: 'x', limit: 51 }, { query: 'x', [S]: 1 }, { query: 'x', types: [] }, label === 'global' ? { query: 'x', includeGlobal: true } : { query: 'x', includeGlobal: 'y' }]) {
+        const res = await post(path, body);
+        expect(res.status).toBe(400);
+        expect(res.text).not.toContain(S);
+      }
+      expect(retrieval.retrieve).not.toHaveBeenCalled();
+    });
+  }
+
+  it('carries the degraded marker over and shows no provider detail', async () => {
+    retrieval.response = { results: [chunkResult('c') as never], degraded: 'keyword_only' };
+    const res = await post(ctxWs(), { query: 'q' });
+    expect(res.json!.degraded).toBe('keyword_only');
+    expect(Object.keys(res.json!).sort()).toEqual(['context', 'degraded', 'sources']);
+  });
+
+  it('truncating drops later sources from the list too, and nothing about them is serialized', async () => {
+    const dropped = chunkResult('DROPPED-SENTINEL', { file: { id: randomUUID(), name: 'hidden-name.md' } });
+    retrieval.response = { results: [chunkResult('First. '.repeat(400)) as never, dropped as never] };
+    const res = await post(ctxWs(), { query: 'q', maxChars: 1200 });
+    expect(res.json!.sources).toHaveLength(1);
+    expect(res.text).not.toContain('DROPPED-SENTINEL');
+    expect(res.text).not.toContain('hidden-name.md');
+    expect(res.text).not.toContain(dropped.id);
+  });
+
+  it('API key: the same permission matrix as search, naming what is missing, before any retrieval', async () => {
+    const cases: [Permission[], Record<string, unknown>, string][] = [
+      [['files:read', 'memories:read'], { query: 'q' }, 'Missing permission: search'],
+      [['search', 'memories:read'], { query: 'q' }, 'Missing permission: files:read'],
+      [['search', 'files:read'], { query: 'q' }, 'Missing permission: memories:read'],
+      [['search'], { query: 'q' }, 'Missing permission: files:read, memories:read'],
+      [FULL, { query: 'q', includeGlobal: true }, 'Missing permission: global:read'],
+    ];
+    for (const [held, body, message] of cases) {
+      const res = await post(ctxWs(), body, { bearer: await keyFor(WS, held) });
+      expect(res.status, message).toBe(403);
+      expect(res.json!.message).toBe(message);
+    }
+    const noGrant = await post(CTX_GLOBAL, { query: 'q' }, { bearer: await keyFor(WS, FULL) });
+    expect([noGrant.status, noGrant.json!.message]).toEqual([403, 'Missing permission: global:read']);
+    expect(retrieval.retrieve).not.toHaveBeenCalled();
+  });
+
+  it('API key: a single readable type, Global with the grant, and Global never implicit', async () => {
+    expect((await post(ctxWs(), { query: 'q', types: ['files'] }, { bearer: await keyFor(WS, ['search', 'files:read']) })).status).toBe(200);
+    expect(retrieval.calls[0]!.plan.types).toEqual(['files']);
+    const key = await keyFor(WS, [...FULL, 'global:read']);
+    expect((await post(CTX_GLOBAL, { query: 'q' }, { bearer: key })).status).toBe(200);
+    await post(ctxWs(), { query: 'q' }, { bearer: key });
+    await post(ctxWs(), { query: 'q', includeGlobal: true }, { bearer: key });
+    expect(retrieval.calls[2]!.plan.scopes).toEqual([{ kind: 'workspace', workspaceId: WS }]);
+    expect(retrieval.calls[3]!.plan.scopes).toEqual([{ kind: 'workspace', workspaceId: WS }, { kind: 'global' }]);
+  });
+
+  it('API key: another Workspace equals an unknown one, byte for byte, and inaccessible filter ids equal random ids', async () => {
+    const key = await keyFor(WS, PERMISSIONS);
+    const foreign = await post(ctxWs(OTHER_WS), { query: 'q' }, { bearer: key });
+    const unknown = await post(ctxWs(randomUUID()), { query: 'q' }, { bearer: key });
+    expect([foreign.status, unknown.status]).toEqual([404, 404]);
+    expect(unknown.text).toBe(foreign.text);
+    const a = await post(ctxWs(), { query: 'q', collectionIds: [randomUUID()], fileIds: [randomUUID()] }, { bearer: key });
+    const b = await post(ctxWs(), { query: 'q', collectionIds: [randomUUID()], fileIds: [randomUUID()] }, { bearer: key });
+    expect(a.text).toBe(b.text);
+    expect(retrieval.calls).toHaveLength(2);
+  });
+
+  it('unauthenticated calls are 401', async () => {
+    expect((await post(CTX_GLOBAL, { query: 'q' }, {})).status).toBe(401);
+    expect((await post(ctxWs(), { query: 'q' }, {})).status).toBe(401);
+  });
+});
