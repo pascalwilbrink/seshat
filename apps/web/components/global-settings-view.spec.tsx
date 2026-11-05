@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 const router = { push: vi.fn(), replace: vi.fn() };
+const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
+vi.mock('sonner', () => ({ toast, Toaster: () => null }));
 vi.mock('next/navigation', () => ({ useRouter: () => router }));
 
 import { GlobalSettingsView } from './global-settings-view';
@@ -16,6 +18,8 @@ afterEach(() => {
   vi.unstubAllGlobals();
   fetchMock.mockReset();
   router.push.mockReset();
+  toast.success.mockReset();
+  toast.error.mockReset();
 });
 
 const view = () =>
@@ -38,7 +42,7 @@ describe('Global Settings', () => {
   it('shows loading, then the Workspaces', async () => {
     fetchMock.mockImplementation(routeFetch({ '/api/global/workspaces': () => json([ws('a', 'Alpha')]) }));
     view();
-    expect(screen.getByRole('status')).toHaveTextContent('Loading');
+    expect(screen.getByRole('status')).toHaveTextContent('Loading Workspaces');
     expect(await screen.findByRole('link', { name: 'Alpha' })).toHaveAttribute('href', '/w/a/overview');
   });
   it('shows the first-Workspace empty state', async () => {
@@ -54,6 +58,26 @@ describe('Global Settings', () => {
     fail = false;
     await userEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(await screen.findByRole('link', { name: 'Alpha' })).toBeInTheDocument();
+  });
+  it('keeps the stable create-form anchor and ignores a second submit while pending', async () => {
+    let release: (r: Response) => void = () => {};
+    let posts = 0;
+    fetchMock.mockImplementation((_u: string, init?: RequestInit) => {
+      if (init?.method === 'POST') {
+        posts += 1;
+        return new Promise<Response>((r) => (release = r));
+      }
+      return Promise.resolve(json([]));
+    });
+    view();
+    expect(await screen.findByRole('heading', { name: 'Create Workspace' })).toHaveAttribute('id', 'create-workspace');
+    await userEvent.type(screen.getByLabelText('Name'), 'Once');
+    const form = screen.getByRole('button', { name: 'Create Workspace' }).closest('form')!;
+    fireEvent.submit(form);
+    fireEvent.submit(form);
+    expect(posts).toBe(1);
+    release(json({ message: 'x' }, 400));
+    await screen.findByRole('button', { name: 'Create Workspace' });
   });
   it('has no rename or delete for Global', async () => {
     fetchMock.mockImplementation(routeFetch({ '/api/global/workspaces': () => json([]) }));
@@ -75,6 +99,8 @@ describe('Global Settings', () => {
     await create('New One');
     await vi.waitFor(() => expect(router.push).toHaveBeenCalledWith('/w/new-one/overview'));
     expect(postBody()).toEqual({ name: 'New One' });
+    expect(toast.success).toHaveBeenCalledWith('Workspace "New One" created');
+    expect(toast.error).not.toHaveBeenCalled();
     // The collection was re-fetched before navigating.
     expect(fetchMock.mock.calls.filter((c) => !c[1]?.method).length).toBe(2);
     expect(fetchMock.mock.calls.every((c) => String(c[0]).startsWith('/api/'))).toBe(true);
@@ -112,6 +138,8 @@ describe('Global Settings', () => {
     const slug = await screen.findByLabelText(/Slug/);
     expect(slug).toHaveAttribute('aria-invalid', 'true');
     expect(slug).toHaveAccessibleDescription(/reserved/);
+    expect(toast.error).toHaveBeenCalledTimes(1);
+    expect(toast.success).not.toHaveBeenCalled();
     expect(screen.getByLabelText('Name')).toHaveAttribute('aria-invalid', 'false');
     expect(router.push).not.toHaveBeenCalled();
   });
@@ -122,6 +150,8 @@ describe('Global Settings', () => {
     view();
     await create('Alpha', 'a');
     expect(await screen.findByLabelText(/Slug/)).toHaveAccessibleDescription(/already exists/);
+    expect(toast.error).toHaveBeenCalledWith('A Workspace with this slug already exists');
+    expect(toast.success).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: 'Create Workspace' })).toBeEnabled();
   });
   it('shows a generic safe error for a server failure and for a network error', async () => {
@@ -133,9 +163,12 @@ describe('Global Settings', () => {
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent('Something went wrong');
     expect(alert).not.toHaveTextContent('SQLITE');
+    expect(toast.error).toHaveBeenLastCalledWith('Something went wrong. Please try again.');
     fetchMock.mockImplementation((_u: string, init?: RequestInit) => (init?.method === 'POST' ? Promise.reject(new TypeError('x')) : Promise.resolve(json([]))));
     await userEvent.click(screen.getByRole('button', { name: 'Create Workspace' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Could not reach the server');
+    expect(toast.error).toHaveBeenLastCalledWith(expect.stringContaining('Could not reach the server'));
+    expect(toast.success).not.toHaveBeenCalled();
   });
   it('sends an expired session (401) to the shared login flow', async () => {
     const assign = vi.fn();

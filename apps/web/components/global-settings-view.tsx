@@ -3,12 +3,24 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { type FormEvent, useState } from 'react';
+import { Boxes } from 'lucide-react';
+import { toast } from 'sonner';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Textarea } from '@/components/ui/textarea';
 import { apiFetch } from '@/lib/api-client';
 import type { WorkspaceDto } from '@/lib/api-types';
 import { readFormError, type FormError } from '@/lib/form-errors';
 import { scopeHref } from '@/lib/scope';
+import { EmptyState } from './empty-state';
+import { ErrorState } from './error-state';
 import { FormField } from './form-field';
+import { PageHeader } from './page-header';
 import { useWorkspaces } from './workspaces-provider';
+
+const NETWORK_MESSAGE = 'Could not reach the server. Check your connection and try again.';
 
 /** Global Settings: list and create Workspaces. Global itself has nothing to rename or delete. */
 export function GlobalSettingsView() {
@@ -19,6 +31,7 @@ export function GlobalSettingsView() {
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (pending) return;
     const data = new FormData(event.currentTarget);
     const body: Record<string, string> = { name: String(data.get('name') ?? '') };
     const slug = String(data.get('slug') ?? '').trim();
@@ -34,15 +47,19 @@ export function GlobalSettingsView() {
         body: JSON.stringify(body),
       });
       if (!res.ok) {
-        setError(await readFormError(res));
+        const failure = await readFormError(res);
+        setError(failure);
+        toast.error(failure.message);
         setPending(false);
         return;
       }
       const created = (await res.json()) as WorkspaceDto;
       await refresh();
+      toast.success(`Workspace "${created.name}" created`);
       router.push(scopeHref({ kind: 'workspace', slug: created.slug }, 'overview'));
     } catch {
-      setError({ message: 'Could not reach the server. Check your connection and try again.', fields: {}, status: 0 });
+      setError({ message: NETWORK_MESSAGE, fields: {}, status: 0 });
+      toast.error(NETWORK_MESSAGE);
       setPending(false);
     }
   }
@@ -53,59 +70,83 @@ export function GlobalSettingsView() {
   const slugError = fe.slug ?? (error?.status === 409 ? error.message : undefined);
 
   return (
-    <section>
-      <p className="scope-label">Global</p>
-      <h1>Global Settings</h1>
+    <section className="flex flex-col gap-6">
+      <PageHeader title="Global Settings" description="Create and open the Workspaces available to you." />
 
-      <h2>Workspaces</h2>
-      {state.status === 'loading' && (
-        <p role="status" className="muted">
-          Loading Workspaces…
-        </p>
-      )}
-      {state.status === 'error' && (
-        <div>
-          <p role="alert">Could not load Workspaces.</p>
-          <button type="button" onClick={reload}>
-            Retry
-          </button>
-        </div>
-      )}
-      {state.status === 'ready' && state.workspaces.length === 0 && <p className="muted">No Workspaces yet. Create your first Workspace below.</p>}
-      {state.status === 'ready' && state.workspaces.length > 0 && (
-        <ul aria-label="Workspaces" className="ws-list">
-          {state.workspaces.map((w) => (
-            <li key={w.id}>
-              <Link href={scopeHref({ kind: 'workspace', slug: w.slug }, 'overview')}>{w.name}</Link>{' '}
-              <code>{w.slug}</code>{' '}
-              <Link href={scopeHref({ kind: 'workspace', slug: w.slug }, 'settings')} aria-label={`Settings for ${w.name}`}>
-                Settings
-              </Link>
-            </li>
-          ))}
-        </ul>
-      )}
-
-      <h2 id="create-workspace" tabIndex={-1}>Create Workspace</h2>
-      <form onSubmit={onSubmit} aria-busy={pending} noValidate className="form">
-        <FormField id="ws-name" label="Name" error={fe.name}>
-          {(p) => <input {...p} name="name" type="text" required maxLength={100} disabled={pending} />}
-        </FormField>
-        <FormField id="ws-slug" label="Slug (optional)" hint="Lowercase letters, numbers and hyphens. Derived from the name when empty. It cannot be changed later." error={slugError}>
-          {(p) => <input {...p} name="slug" type="text" maxLength={100} autoCapitalize="none" spellCheck={false} disabled={pending} />}
-        </FormField>
-        <FormField id="ws-description" label="Description (optional)" error={fe.description}>
-          {(p) => <textarea {...p} name="description" rows={3} maxLength={2000} disabled={pending} />}
-        </FormField>
-        {formLevel && (
-          <p role="alert" className="field-error">
-            {formLevel}
-          </p>
+      <div className="flex min-w-0 flex-col gap-3">
+        <h2 className="text-lg font-semibold">Workspaces</h2>
+        {state.status === 'loading' && (
+          <div aria-busy="true" className="flex flex-col gap-2">
+            <p role="status" className="sr-only">
+              Loading Workspaces…
+            </p>
+            <Skeleton className="h-10 w-full max-w-md" />
+            <Skeleton className="h-10 w-full max-w-md" />
+          </div>
         )}
-        <button type="submit" disabled={pending}>
-          {pending ? 'Creating…' : 'Create Workspace'}
-        </button>
-      </form>
+        {state.status === 'error' && <ErrorState title="Could not load Workspaces" message="Check your connection and try again." retryLabel="Retry" onRetry={reload} />}
+        {state.status === 'ready' && state.workspaces.length === 0 && (
+          <EmptyState title="No Workspaces yet" description="Create your first Workspace below." icon={Boxes} />
+        )}
+        {state.status === 'ready' && state.workspaces.length > 0 && (
+          <Card className="min-w-0 p-2">
+            <ul aria-label="Workspaces" className="flex flex-col divide-y divide-border">
+              {state.workspaces.map((w) => (
+                <li key={w.id} className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 px-2 py-2 text-sm">
+                  <Link
+                    href={scopeHref({ kind: 'workspace', slug: w.slug }, 'overview')}
+                    className="min-w-0 break-words font-medium text-primary underline-offset-4 hover:underline"
+                  >
+                    {w.name}
+                  </Link>
+                  <code className="min-w-0 break-all font-mono text-muted-foreground">{w.slug}</code>
+                  <Link
+                    href={scopeHref({ kind: 'workspace', slug: w.slug }, 'settings')}
+                    aria-label={`Settings for ${w.name}`}
+                    className="ml-auto text-muted-foreground underline-offset-4 hover:underline"
+                  >
+                    Settings
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        )}
+      </div>
+
+      <div className="flex min-w-0 flex-col gap-3">
+        <h2 id="create-workspace" tabIndex={-1} className="scroll-mt-4 text-lg font-semibold focus-visible:outline-2 focus-visible:outline-ring">
+          Create Workspace
+        </h2>
+        <Card className="min-w-0 max-w-xl p-4">
+          <form onSubmit={onSubmit} aria-busy={pending} noValidate className="flex flex-col gap-4">
+            <FormField id="ws-name" label="Name" error={fe.name}>
+              {(p) => <Input {...p} name="name" type="text" required maxLength={100} disabled={pending} />}
+            </FormField>
+            <FormField
+              id="ws-slug"
+              label="Slug (optional)"
+              hint="Lowercase letters, numbers and hyphens. Derived from the name when empty. It cannot be changed later."
+              error={slugError}
+            >
+              {(p) => <Input {...p} name="slug" type="text" maxLength={100} autoCapitalize="none" spellCheck={false} disabled={pending} />}
+            </FormField>
+            <FormField id="ws-description" label="Description (optional)" error={fe.description}>
+              {(p) => <Textarea {...p} name="description" rows={3} maxLength={2000} disabled={pending} />}
+            </FormField>
+            {formLevel && (
+              <p role="alert" className="text-sm text-destructive break-words">
+                {formLevel}
+              </p>
+            )}
+            <div>
+              <Button type="submit" disabled={pending}>
+                {pending ? 'Creating…' : 'Create Workspace'}
+              </Button>
+            </div>
+          </form>
+        </Card>
+      </div>
     </section>
   );
 }
