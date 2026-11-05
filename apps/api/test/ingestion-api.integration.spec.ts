@@ -33,7 +33,7 @@ describeIntegration('re-index and chunk preview services (real PostgreSQL + pgve
     },
   } as unknown as QueueService;
 
-  const key = (workspaceId: string, permissions: Permission[]): Principal => ({ kind: 'apiKey', keyId: 'k', workspaceId, permissions });
+  const key = (workspaceId: string, permissions: Permission[]): Principal => ({ kind: 'apiKey', keyId: 'k', keyName: 'key', workspaceId, permissions });
   const q = (sql: string, params: unknown[] = []) => ds.query(sql, params) as Promise<Record<string, any>[]>;
   const addFile = async (ws: string | null, status = 'indexed', error: string | null = null) =>
     (await q(

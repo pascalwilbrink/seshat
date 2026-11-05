@@ -98,6 +98,6 @@ export class SessionGuard implements CanActivate {
     } catch {
       // Best effort: a failed last-used write must not fail an authenticated request.
     }
-    return { kind: 'apiKey', keyId: record.id, workspaceId: record.workspaceId, permissions: record.permissions };
+    return { kind: 'apiKey', keyId: record.id, keyName: record.name, workspaceId: record.workspaceId, permissions: record.permissions };
   }
 }

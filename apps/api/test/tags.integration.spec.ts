@@ -29,7 +29,7 @@ describeIntegration('Scoped Tags (real PostgreSQL)', () => {
   let seq = 0;
 
   const ws = (id: string) => workspaceScope(id);
-  const key = (workspaceId: string, ...permissions: Permission[]): Principal => ({ kind: 'apiKey', keyId: 'k', workspaceId, permissions });
+  const key = (workspaceId: string, ...permissions: Permission[]): Principal => ({ kind: 'apiKey', keyId: 'k', keyName: 'key', workspaceId, permissions });
   const addWorkspace = async (slug: string) =>
     ((await ds.query('INSERT INTO workspaces (name, slug) VALUES ($1, $1) RETURNING id', [slug])) as { id: string }[])[0]!.id;
   const addFile = async (workspaceId: string | null) => {
