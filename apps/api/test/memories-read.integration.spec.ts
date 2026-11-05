@@ -302,11 +302,11 @@ describeIntegration('Memory get and list (real PostgreSQL, HTTP)', () => {
 
     it('never serializes embedding coordinates', async () => {
       const m = await mk(g, 'vec');
-      await ds.query(`UPDATE memories SET embedding = (SELECT array_agg(0.5)::vector FROM generate_series(1, 1536)), embedding_status = 'ready', embedding_model = 'm' WHERE id = $1`, [m.id]);
+      await ds.query(`UPDATE memories SET embedding = (SELECT array_agg(0.7071)::vector FROM generate_series(1, 1536)), embedding_status = 'ready', embedding_model = 'm' WHERE id = $1`, [m.id]);
       const l = await send('GET', g);
       const d = await send('GET', `${g}/${m.id}`);
       for (const r of [l, d]) {
-        expect(r.text).not.toMatch(/0\.5|"embedding"\s*:|\[\s*0/);
+        expect(r.text).not.toMatch(/0\.7071|"embedding"\s*:|\[\s*0\./);
         expect(r.text).toContain('"embeddingStatus":"ready"');
       }
     });
