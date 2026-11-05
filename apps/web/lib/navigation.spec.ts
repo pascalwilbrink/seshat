@@ -15,9 +15,9 @@ describe('navigation config', () => {
     expect(labels('system')).toEqual(['Settings']);
     expect(NAV_AREAS.filter((a) => a.group === 'developer').every((a) => a.scopes.length === 1 && a.scopes[0] === 'workspace')).toBe(true);
   });
-  it('lists only Overview and Settings initially, in both scopes', () => {
+  it('lists Overview, Memories and Settings, in both scopes', () => {
     for (const scope of [G, W]) {
-      expect(visibleGroups(scope).flatMap((g) => g.areas.map((a) => a.label))).toEqual(['Overview', 'Settings']);
+      expect(visibleGroups(scope).flatMap((g) => g.areas.map((a) => a.label))).toEqual(['Overview', 'Memories', 'Settings']);
     }
   });
   it('still resolves direct routes of unavailable areas', () => {
@@ -31,6 +31,8 @@ describe('navigation config', () => {
     expect(switchScopeHref(W, byId('settings'))).toBe('/w/a/settings');
     expect(switchScopeHref(G, byId('settings'))).toBe('/global/settings');
     expect(switchScopeHref(W, byId('files'))).toBe('/w/a/overview'); // unavailable
+    expect(switchScopeHref(W, byId('memories'))).toBe('/w/a/memories');
+    expect(switchScopeHref(G, byId('memories'))).toBe('/global/memories');
     expect(switchScopeHref(G, byId('api-keys'))).toBe('/global/overview'); // Workspace-only
     expect(switchScopeHref(G, null)).toBe('/global/overview');
   });
@@ -49,7 +51,7 @@ describe('future extension needs only a config entry', () => {
   });
   it('shows an existing area once its availability flag is switched on', () => {
     const on = areas.map((a) => (a.id === 'files' ? { ...a, available: true } : a));
-    expect(visibleGroups(G, on)[0]!.areas.map((a) => a.label)).toEqual(['Overview', 'Files']);
+    expect(visibleGroups(G, on)[0]!.areas.map((a) => a.label)).toEqual(['Overview', 'Files', 'Memories']);
     expect(switchScopeHref(W, on.find((a) => a.id === 'files')!, on)).toBe('/w/a/files');
   });
   it('uses a typed icon per area', () => {

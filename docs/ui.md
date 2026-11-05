@@ -95,7 +95,7 @@ Do not touch `app-shell.tsx` for this.
 
 ### Current availability
 
-By the approved spec, only **Overview** and **Settings** are available (listed in the navigation). Files, Collections and API Keys already exist as direct routes (`/global/files`, `/w/<slug>/files`, `/global/collections`, `/w/<slug>/collections`, `/w/<slug>/api-keys`). Those routes and their behaviour are preserved; they are simply not listed in the sidebar until their feature work marks the area `available`. Search, Memories and MCP have no routes yet. Do not expose a route in the navigation before its page follows this guide.
+Currently **Overview**, **Memories** and **Settings** are available (listed in the navigation). Files, Collections and API Keys already exist as direct routes (`/global/files`, `/w/<slug>/files`, `/global/collections`, `/w/<slug>/collections`, `/w/<slug>/api-keys`). Those routes and their behaviour are preserved; they are simply not listed in the sidebar until their feature work marks the area `available`. Search and MCP have no routes yet. Memories (`/global/memories`, `/w/<slug>/memories`) is read-only for now: filtered newest-first list, load-more and a detail with successor navigation. Do not expose a route in the navigation before its page follows this guide.
 
 ## Shared components
 
