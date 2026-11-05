@@ -33,6 +33,13 @@ describe('protected layout', () => {
     getSession.mockResolvedValue(null);
     await expect(ProtectedLayout({ children: null })).rejects.toThrow('REDIRECT:/login');
   });
+  it('renders the Overview inside the shell with its main landmark and skip link', async () => {
+    getSession.mockResolvedValue({ username: 'admin' });
+    const html = renderToStaticMarkup(await ProtectedLayout({ children: <OverviewView scope={{ kind: 'global' }} /> }));
+    expect(html).toContain('id="main"');
+    expect(html).toContain('Skip to content');
+    expect(html).toContain('Overview');
+  });
   it('is dynamic so sessions are never cached between users', async () => {
     const mod = await import('./layout');
     expect(mod.dynamic).toBe('force-dynamic');

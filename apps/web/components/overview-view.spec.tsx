@@ -33,6 +33,21 @@ describe('Global Overview', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Loading');
     expect(await screen.findByRole('heading', { name: 'Global' })).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Create your first Workspace' })).not.toBeInTheDocument();
+    // Only a genuinely available metric becomes a stat card: the authorized Workspace count.
+    expect(screen.getByText('Workspaces')).toBeInTheDocument();
+    expect(screen.getByText('1')).toBeInTheDocument();
+    expect(screen.queryByText(/files|chunks|storage/i)).not.toBeInTheDocument();
+  });
+  it('shows no stat card while the Workspace collection failed', async () => {
+    fetchMock.mockImplementation(
+      routeFetch({
+        '/api/global/workspaces': () => json({}, 500),
+        '/api/global/overview': () => json({ scope: 'global', name: 'Global' }),
+      }),
+    );
+    view({ kind: 'global' });
+    expect(await screen.findByRole('heading', { name: 'Global' })).toBeInTheDocument();
+    expect(screen.queryByText('Workspaces')).not.toBeInTheDocument();
   });
   it('offers Create your first Workspace linking to Global Settings when there are none', async () => {
     fetchMock.mockImplementation(
@@ -44,6 +59,7 @@ describe('Global Overview', () => {
     view({ kind: 'global' });
     const cta = await screen.findByRole('link', { name: 'Create your first Workspace' });
     expect(cta).toHaveAttribute('href', '/global/settings');
+    expect(screen.queryByText('Workspaces')).not.toBeInTheDocument();
   });
   it('shows an error and retries', async () => {
     let fail = true;
@@ -62,6 +78,34 @@ describe('Global Overview', () => {
 });
 
 describe('Workspace Overview', () => {
+  it('shows a loading status, then the details without a description placeholder lie', async () => {
+    fetchMock.mockImplementation(
+      routeFetch({
+        '/api/global/workspaces': () => json([ws('alpha', 'Alpha', 'uuid-1')]),
+        '/api/workspaces/uuid-1/overview': () =>
+          json({ scope: 'workspace', id: 'uuid-1', name: 'Alpha', slug: 'alpha', description: null, createdAt: '2026-03-02T10:00:00.000Z' }),
+      }),
+    );
+    view({ kind: 'workspace', slug: 'alpha' });
+    expect(screen.getByRole('status')).toHaveTextContent('Loading');
+    expect(await screen.findByRole('heading', { name: 'Alpha' })).toBeInTheDocument();
+    expect(screen.getByText('No description')).toBeInTheDocument();
+  });
+  it('retries a failed Workspace overview', async () => {
+    let fail = true;
+    fetchMock.mockImplementation(
+      routeFetch({
+        '/api/global/workspaces': () => json([ws('alpha', 'Alpha', 'uuid-1')]),
+        '/api/workspaces/uuid-1/overview': () =>
+          fail ? json({}, 500) : json({ scope: 'workspace', id: 'uuid-1', name: 'Alpha', slug: 'alpha', description: 'x', createdAt: '2026-03-02T10:00:00.000Z' }),
+      }),
+    );
+    view({ kind: 'workspace', slug: 'alpha' });
+    expect(await screen.findByRole('alert')).toHaveTextContent('Could not load the Overview');
+    fail = false;
+    await userEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(await screen.findByRole('heading', { name: 'Alpha' })).toBeInTheDocument();
+  });
   const workspaces = [ws('alpha', 'Alpha', 'uuid-1'), ws('beta', 'Beta', 'uuid-2')];
   it('resolves the slug to the UUID and shows name, description and created date', async () => {
     fetchMock.mockImplementation(
@@ -74,7 +118,10 @@ describe('Workspace Overview', () => {
     view({ kind: 'workspace', slug: 'alpha' });
     expect(await screen.findByRole('heading', { name: 'Alpha' })).toBeInTheDocument();
     expect(screen.getByText('About alpha')).toBeInTheDocument();
-    expect(screen.getByText('2 March 2026')).toBeInTheDocument();
+    expect(screen.getByText(/2 March 2026/)).toBeInTheDocument();
+    expect(document.querySelector('time')).toHaveAttribute('datetime', '2026-03-02T10:00:00.000Z');
+    // A Workspace has no supplied numeric stats, so no stat cards are invented.
+    expect(screen.queryByText(/files|chunks|storage|Workspaces/i)).not.toBeInTheDocument();
     expect(urls()).not.toContain('/api/workspaces/alpha/overview');
     expect(urls().every((u) => u.startsWith('/api/'))).toBe(true);
   });
