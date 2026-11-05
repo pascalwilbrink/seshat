@@ -113,3 +113,42 @@ export interface TagDto {
   createdAt: string;
   updatedAt: string;
 }
+
+export const MEMORY_TYPES = ['fact', 'decision', 'preference', 'experience', 'procedure', 'context'] as const;
+export type MemoryType = (typeof MEMORY_TYPES)[number];
+export type MemoryStatus = 'active' | 'superseded';
+export const MEMORY_LIST_STATUSES = ['active', 'superseded', 'all'] as const;
+export type MemoryListStatus = (typeof MEMORY_LIST_STATUSES)[number];
+export type MemoryEmbeddingStatus = 'pending' | 'ready' | 'failed';
+
+/** Memory as returned by the API. Titles, content, tags, metadata and provenance names are untrusted text. */
+export interface MemoryDto {
+  id: string;
+  scope: 'global' | 'workspace';
+  workspaceId: string | null;
+  type: MemoryType;
+  content: string;
+  title: string | null;
+  metadata: Record<string, unknown> | null;
+  confidence: number | null;
+  source: string | null;
+  tags: string[];
+  status: MemoryStatus;
+  /** Successor in the same scope; null unless superseded, and cleared when the successor is forgotten. */
+  supersededBy: string | null;
+  provenance: {
+    createdBy: { kind: 'admin' | 'api_key'; keyId: string | null; keyName: string | null };
+    client: { name: string; version: string | null } | null;
+  };
+  embeddingStatus: MemoryEmbeddingStatus;
+  embeddingModel: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MemoryPageDto {
+  items: MemoryDto[];
+  nextCursor: string | null;
+  hasMore: boolean;
+  limit: number;
+}
