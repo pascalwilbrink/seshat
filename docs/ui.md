@@ -95,7 +95,7 @@ Do not touch `app-shell.tsx` for this.
 
 ### Current availability
 
-Currently **Overview**, **Memories** and **Settings** are available (listed in the navigation). Files, Collections and API Keys already exist as direct routes (`/global/files`, `/w/<slug>/files`, `/global/collections`, `/w/<slug>/collections`, `/w/<slug>/api-keys`). Those routes and their behaviour are preserved; they are simply not listed in the sidebar until their feature work marks the area `available`. Search and MCP have no routes yet. Memories (`/global/memories`, `/w/<slug>/memories`) is read-only for now: filtered newest-first list, load-more and a detail with successor navigation. Do not expose a route in the navigation before its page follows this guide.
+Currently **Overview**, **Memories** and **Settings** are available (listed in the navigation). Files, Collections and API Keys already exist as direct routes (`/global/files`, `/w/<slug>/files`, `/global/collections`, `/w/<slug>/collections`, `/w/<slug>/api-keys`). Those routes and their behaviour are preserved; they are simply not listed in the sidebar until their feature work marks the area `available`. Search and MCP have no routes yet. Memories (`/global/memories`, `/w/<slug>/memories`) has a filtered newest-first list, load-more, a detail with successor navigation, create and edit in a side sheet, similar-Memory choices, embedding retry and confirmed forget. Do not expose a route in the navigation before its page follows this guide.
 
 ## Shared components
 
@@ -182,6 +182,9 @@ These are design patterns for pages that later feature specs build. They are **n
 - List: type badge, title or excerpt, tags, `StatusBadge` (`active`, `superseded`) and provenance (source or creating agent).
 - Create and edit in a side `Sheet` (side `right`) with `FormField`s.
 - Supersession is shown as a link between the superseded and the superseding memory, never as a hidden state.
+- After a create, similar active memories are listed with **Supersede** (calls the supersede endpoint on the chosen memory with the saved one as successor) and **Keep both** (dismisses, no request). Nothing is merged automatically. A duplicate create says the existing memory was reused.
+- Edit is a full-replacement `PUT` that carries existing metadata over; provenance and lifecycle fields are never sent. Superseded memories are not editable (a 409 points to the successor).
+- A failed embedding offers **Retry embedding**; a pending one is re-read at a bounded interval only while the detail is open. **Forget** always asks for confirmation.
 
 ### API Keys
 

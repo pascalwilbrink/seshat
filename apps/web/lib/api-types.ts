@@ -152,3 +152,13 @@ export interface MemoryPageDto {
   hasMore: boolean;
   limit: number;
 }
+
+/** Similar active Memory of the same scope offered after a create. Untrusted text. */
+export interface MemoryHintDto {
+  id: string;
+  type: string;
+  preview: string;
+}
+
+/** Create response: the saved (or reused) Memory, whether it was a duplicate, and similar-Memory hints. */
+export type CreateMemoryResultDto = MemoryDto & { deduplicated: boolean; hints: MemoryHintDto[] };

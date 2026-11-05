@@ -9,6 +9,7 @@ import {
   type MemoryDto,
   type MemoryListStatus,
   type MemoryPageDto,
+  type CreateMemoryResultDto,
   type MemoryType,
   type TagDto,
   type WorkspaceDto,
@@ -23,6 +24,8 @@ import { Select } from '@/components/ui/select';
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { EmbeddingBadge, MemoryStatusBadge, TypeBadge, provenanceText } from './memory-badges';
 import { MemoryDetail } from './memory-detail';
+import { MemoryForm, type MemoryFormResult } from './memory-form';
+import { MemoryHints } from './memory-hints';
 import { useWorkspaces } from './workspaces-provider';
 
 const NETWORK = 'Could not reach the server. Check your connection and try again.';
@@ -39,7 +42,7 @@ function preview(m: MemoryDto): string {
   return text.length > PREVIEW_CHARS ? `${text.slice(0, PREVIEW_CHARS)}…` : text;
 }
 
-/** Memories of Global or one Workspace (read-only). All Memory text is untrusted and rendered as text only. */
+/** Memories of Global or one Workspace: list, create, edit, supersede, retry embedding and forget. All Memory text is untrusted and rendered as text only. */
 export function MemoriesView({ scope }: { scope: Scope }) {
   if (scope.kind === 'global') return <MemoriesPanel key="global" base="/api/global" label="Global" />;
   return <WorkspaceMemories slug={scope.slug} />;
@@ -103,6 +106,9 @@ function MemoriesPanel({ base, label }: { base: string; label: string }) {
   const [more, setMore] = useState<{ pending: boolean; error: string | null }>({ pending: false, error: null });
   const [tags, setTags] = useState<TagDto[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
+  const [compose, setCompose] = useState<{ supersedes: string | null } | null>(null);
+  const [created, setCreated] = useState<CreateMemoryResultDto | null>(null);
+  const [flash, setFlash] = useState<string | null>(null);
   const latest = useRef(0);
   const mounted = useRef(true);
   useEffect(() => {
@@ -152,16 +158,32 @@ function MemoriesPanel({ base, label }: { base: string; label: string }) {
   useEffect(() => {
     void loadFirst(applied);
   }, [applied, loadFirst]);
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await apiFetch(`${base}/tags`);
-        if (mounted.current && res.ok) setTags((await res.json()) as TagDto[]);
-      } catch {
-        // Tags only feed the filter; the list still works without them.
-      }
-    })();
+  const loadTags = useCallback(async () => {
+    try {
+      const res = await apiFetch(`${base}/tags`);
+      if (mounted.current && res.ok) setTags((await res.json()) as TagDto[]);
+    } catch {
+      // Tags only feed the filter; the list still works without them.
+    }
   }, [base]);
+  useEffect(() => {
+    void loadTags();
+  }, [loadTags]);
+
+  // After a successful mutation the list and the tag filter are read again; the open detail keeps its own state.
+  const refresh = useCallback(() => {
+    void loadFirst(applied);
+    void loadTags();
+  }, [loadFirst, applied, loadTags]);
+
+  function onCreateDone(r: MemoryFormResult) {
+    if (r.kind !== 'created') return;
+    setCompose(null);
+    setFlash(null);
+    setCreated(r.result);
+    setSelected(r.result.id);
+    refresh();
+  }
 
   async function loadMore() {
     if (list.status !== 'ready' || !list.nextCursor || more.pending) return;
@@ -208,6 +230,28 @@ function MemoriesPanel({ base, label }: { base: string; label: string }) {
       <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
       <h1 className="mb-4 text-2xl font-semibold tracking-tight break-words">Memories</h1>
       <p className="mb-3 text-muted-foreground">Persistent knowledge records, newest first. Superseded Memories are hidden unless you ask for them.</p>
+
+      <div className="mb-3">
+        <Button type="button" onClick={() => { setFlash(null); setCompose({ supersedes: null }); }}>
+          New Memory
+        </Button>
+      </div>
+      {flash && (
+        <p role="status" className="mb-3">
+          {flash}
+        </p>
+      )}
+      {created && (
+        <MemoryHints
+          key={`hints-${created.id}`}
+          base={memoriesBase}
+          successorId={created.id}
+          hints={created.hints}
+          deduplicated={created.deduplicated}
+          onSuperseded={refresh}
+          onDismiss={() => setCreated(null)}
+        />
+      )}
 
       <form onSubmit={applyFilters} aria-label="Filter Memories" className="flex flex-row flex-wrap items-end gap-3">
         <div className="flex min-w-0 flex-col gap-1">
@@ -329,7 +373,23 @@ function MemoriesPanel({ base, label }: { base: string; label: string }) {
         </>
       )}
 
-      {selected && <MemoryDetail key={selected} base={memoriesBase} memoryId={selected} onSelect={setSelected} onClose={() => setSelected(null)} />}
+      {selected && (
+        <MemoryDetail
+          key={`detail-${selected}`}
+          base={memoriesBase}
+          memoryId={selected}
+          onSelect={setSelected}
+          onClose={() => setSelected(null)}
+          onChanged={refresh}
+          onForgotten={() => {
+            setSelected(null);
+            setFlash('Memory forgotten.');
+            refresh();
+          }}
+          onReplace={(id) => setCompose({ supersedes: id })}
+        />
+      )}
+      {compose && <MemoryForm base={memoriesBase} mode={{ kind: 'create', supersedes: compose.supersedes }} onDone={onCreateDone} onClose={() => setCompose(null)} />}
     </section>
   );
 }
