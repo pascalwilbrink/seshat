@@ -18,6 +18,7 @@ export type Expected = {
 };
 const FILE_READ = { concealed: true, seesGlobalWith: ['files:read'] } as const;
 const COLLECTION_READ = { concealed: true, seesGlobalWith: ['collections:read'] } as const;
+const MEMORY_READ = { concealed: true, seesGlobalWith: ['memories:read'] } as const;
 const TAG_READ: Pick<Expected, 'concealed' | 'seesGlobalWith'> = { concealed: true, seesGlobalWith: ['files:read', 'memories:read'] };
 export const EXPECTED: Record<string, Expected> = {
   'session:read': { kind: 'self' },
@@ -50,9 +51,10 @@ export const EXPECTED: Record<string, Expected> = {
   'tag.rename': { kind: 'write', permission: 'files:write', anyOf: ['files:write', 'memories:write'], ...TAG_READ },
   'tag.delete': { kind: 'write', permission: 'files:write', anyOf: ['files:write', 'memories:write'], ...TAG_READ },
   'memory.recall': { kind: 'read', permission: 'memories:read' },
-  'memory.remember': { kind: 'write', permission: 'memories:write' },
-  'memory.update': { kind: 'write', permission: 'memories:write' },
-  'memory.forget': { kind: 'delete', permission: 'memories:delete' },
+  'memory.remember': { kind: 'write', permission: 'memories:write', ...MEMORY_READ },
+  'memory.update': { kind: 'write', permission: 'memories:write', ...MEMORY_READ },
+  'memory.forget': { kind: 'delete', permission: 'memories:delete', ...MEMORY_READ },
+  'memory.supersede': { kind: 'write', permission: 'memories:write', ...MEMORY_READ },
   'search.query': { kind: 'read', permission: 'search' },
 };
 

@@ -86,11 +86,14 @@ export const ACTION_CATALOG = {
   'tag.list': resAny('read', 'files:read', 'memories:read'),
   'tag.rename': resAny('write', 'files:write', 'memories:write'),
   'tag.delete': resAny('write', 'files:write', 'memories:write'),
-  // Future: memories.
+  // Memories: create (remember), full-replacement update, hard forget and the explicit post-create supersede state
+  // change. Global is concealed like Files (an ungranted key gets the generic 404); keys never write Global.
+  // `memory.recall` is future retrieval and keeps its plain permission mapping.
   'memory.recall': perm('read', 'memories:read'),
-  'memory.remember': perm('write', 'memories:write'),
-  'memory.update': perm('write', 'memories:write'),
-  'memory.forget': perm('delete', 'memories:delete'),
+  'memory.remember': res('write', 'memories:write'),
+  'memory.update': res('write', 'memories:write'),
+  'memory.forget': res('delete', 'memories:delete'),
+  'memory.supersede': res('write', 'memories:write'),
   // Future: search is a read operation.
   'search.query': perm('read', 'search'),
 } as const satisfies Record<string, ActionRequirement>;

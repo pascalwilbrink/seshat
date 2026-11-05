@@ -138,3 +138,10 @@ export function toMemoryDto(m: Memory, tagNames: readonly string[]): MemoryDto {
     updatedAt: new Date(m.updatedAt).toISOString(),
   };
 }
+
+/** `POST .../memories/:memoryId/supersede` body: the already-saved successor. Strict: nothing else is accepted. */
+export const supersedeMemorySchema = z.strictObject({ successorId: uuid });
+export type SupersedeMemoryInput = z.infer<typeof supersedeMemorySchema>;
+
+/** Create response: the Memory plus whether an existing active duplicate was reused instead of inserting. */
+export type CreateMemoryResult = MemoryDto & { deduplicated: boolean };
