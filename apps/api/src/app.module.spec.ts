@@ -82,6 +82,7 @@ describe('global events', () => {
     vi.stubEnv('DATABASE_URL', 'postgres://u:p@localhost:5432/db');
     // Database-free: the connection boundary is mocked; the real wiring is covered by the integration tests.
     const initializeDatabase = vi.fn(fakeInitialize);
+    vi.doMock('pg-boss', async () => (await import('../test/helpers/fake-pg-boss.js')).fakePgBossModule());
     vi.doMock('./database/bootstrap.js', () => ({ initializeDatabase }));
     const { AppModule } = await import('./app.module.js');
     const ctx = await NestFactory.createApplicationContext(AppModule, { logger: false, abortOnError: false });
@@ -97,7 +98,8 @@ describe('database wiring', () => {
       vi.stubEnv('DATABASE_URL', 'postgres://u:p@localhost:5432/db');
       vi.stubEnv('DB_MIGRATE_ON_START', flag);
       const initializeDatabase = vi.fn(fakeInitialize);
-      vi.doMock('./database/bootstrap.js', () => ({ initializeDatabase }));
+      vi.doMock('pg-boss', async () => (await import('../test/helpers/fake-pg-boss.js')).fakePgBossModule());
+    vi.doMock('./database/bootstrap.js', () => ({ initializeDatabase }));
       const { AppModule } = await import('./app.module.js');
       const { dataSource } = await import('./database/data-source.js');
       const ctx = await NestFactory.createApplicationContext(AppModule, { logger: false, abortOnError: false });

@@ -4,6 +4,7 @@ import { AppModule } from './app.module.js';
 import { DatabaseBootstrapError } from './database/bootstrap.js';
 import { EmbeddingDimensionError } from './database/embedding-dimension-guard.js';
 import { ConfigError, getAppConfig, loadConfigOrExit } from './config/index.js';
+import { QueueStartError } from './queue/queue-errors.js';
 import { LocalVolumeFileStorage } from './storage/local-volume-file-storage.js';
 
 async function bootstrap() {
@@ -20,11 +21,20 @@ async function bootstrap() {
     process.exit(1);
   }
   const app = await createApp(AppModule, config);
+  // SIGTERM/SIGINT close the app: workers stop gracefully before connections are released.
+  app.enableShutdownHooks();
   await app.listen(config.port);
 }
 
 bootstrap().catch((err: unknown) => {
   // Bootstrap errors are sanitized where they are raised; anything else is not printed raw.
-  console.error(err instanceof DatabaseBootstrapError || err instanceof EmbeddingDimensionError || err instanceof ConfigError ? err.message : 'Application failed to start');
+  console.error(
+    err instanceof DatabaseBootstrapError ||
+      err instanceof EmbeddingDimensionError ||
+      err instanceof ConfigError ||
+      err instanceof QueueStartError
+      ? err.message
+      : 'Application failed to start',
+  );
   process.exit(1);
 });

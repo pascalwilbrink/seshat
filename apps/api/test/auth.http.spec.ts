@@ -47,6 +47,7 @@ async function boot(opts: { env?: Record<string, string>; trustProxy?: false | n
   for (const [k, v] of Object.entries({ DATABASE_URL: 'postgres://u:p@localhost:5432/db', ...TEST_ADMIN_ENV, NODE_ENV: 'test', ...opts.env })) {
     vi.stubEnv(k, v);
   }
+  vi.doMock('pg-boss', async () => (await import('./helpers/fake-pg-boss.js')).fakePgBossModule());
   vi.doMock('../src/database/bootstrap.js', () => ({ initializeDatabase: vi.fn(fakeInitialize) }));
   const { AppModule } = await import('../src/app.module.js');
   const { createApp } = await import('../src/app.setup.js');
