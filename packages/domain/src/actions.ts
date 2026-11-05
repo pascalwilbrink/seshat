@@ -86,10 +86,12 @@ export const ACTION_CATALOG = {
   'tag.list': resAny('read', 'files:read', 'memories:read'),
   'tag.rename': resAny('write', 'files:write', 'memories:write'),
   'tag.delete': resAny('write', 'files:write', 'memories:write'),
-  // Memories: create (remember), full-replacement update, hard forget and the explicit post-create supersede state
+  // Memories: list/get (concealed Global), create (remember), full-replacement update, hard forget and the explicit post-create supersede state
   // change. Global is concealed like Files (an ungranted key gets the generic 404); keys never write Global.
   // `memory.recall` is future retrieval and keeps its plain permission mapping.
   'memory.recall': perm('read', 'memories:read'),
+  'memory.list': res('read', 'memories:read'),
+  'memory.get': res('read', 'memories:read'),
   'memory.remember': res('write', 'memories:write'),
   'memory.update': res('write', 'memories:write'),
   'memory.forget': res('delete', 'memories:delete'),

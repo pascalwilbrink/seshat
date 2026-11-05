@@ -15,6 +15,8 @@ import {
 } from './memory.dto.js';
 import type { Memory } from './memory.entity.js';
 import { memoryContentHash } from './memory-content.js';
+import { encodeCursor } from '../files/file-list-query.js';
+import { type MemoryListPage, parseMemoryListQuery } from './memory-list-query.js';
 import { buildMemoryProvenance } from './memory-provenance.js';
 
 const NOT_FOUND = 'Not Found';
@@ -96,6 +98,76 @@ export class MemoriesService {
     @Inject(AuthorizationService) private readonly authorization: AuthorizationService,
     @Inject(TagsService) private readonly tags: TagsService,
   ) {}
+
+  /**
+   * `memory.list`: newest created first with a stable (created_at, id) order; the cursor carries the last row's
+   * microsecond timestamp text and id. All filters run in SQL before pagination, every predicate is bound to this
+   * scope's key, and tags are matched with EXISTS so a Memory never appears twice. Status defaults to active.
+   * The text filter is a literal, case-insensitive substring of content or title (`position`, no LIKE wildcards).
+   */
+  async list(principal: Principal, scope: ScopeRef, rawQuery: unknown): Promise<MemoryListPage<MemoryDto>> {
+    this.authorization.assertCan(principal, 'memory.list', scope);
+    const q = parseMemoryListQuery(rawQuery);
+    await this.assertScopeExists(scope);
+
+    const scopeKey = scopeKeyOf(scope);
+    const params: unknown[] = [scopeKey];
+    const where = [`m."scope_key" = $1`];
+    const bind = (value: unknown) => `$${params.push(value)}`;
+    if (q.status !== 'all') where.push(`m."status" = ${bind(q.status)}`);
+    if (q.type) where.push(`m."type" = ${bind(q.type)}`);
+    if (q.createdFrom) where.push(`m."created_at" >= ${bind(q.createdFrom)}::timestamptz`);
+    if (q.createdTo) where.push(`m."created_at" <= ${bind(q.createdTo)}::timestamptz`);
+    if (q.updatedFrom) where.push(`m."updated_at" >= ${bind(q.updatedFrom)}::timestamptz`);
+    if (q.updatedTo) where.push(`m."updated_at" <= ${bind(q.updatedTo)}::timestamptz`);
+    if (q.text) {
+      const p = bind(q.text);
+      where.push(`(position(lower(${p}::text) in lower(m."content")) > 0 OR position(lower(${p}::text) in lower(coalesce(m."title", ''))) > 0)`);
+    }
+    if (q.tag) {
+      where.push(
+        `EXISTS (SELECT 1 FROM "memory_tags" mt JOIN "tags" t ON t."id" = mt."tag_id" AND t."scope_key" = mt."scope_key"
+           WHERE mt."memory_id" = m."id" AND mt."scope_key" = m."scope_key" AND t."name" = ${bind(q.tag)})`,
+      );
+    }
+    if (q.cursor) {
+      where.push(`(m."created_at", m."id") < (${bind(q.cursor.createdAt)}::timestamptz, ${bind(q.cursor.id)}::uuid)`);
+    }
+    const cols = COLUMNS.split(',').map((c) => `m.${c.trim()}`).join(', ');
+    const rows = (await this.dataSource.query(
+      `SELECT ${cols}, to_char(m."created_at" AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS "cursor_ts"
+       FROM "memories" m WHERE ${where.join(' AND ')}
+       ORDER BY m."created_at" DESC, m."id" DESC LIMIT ${bind(q.limit + 1)}`,
+      params,
+    )) as (MemoryRow & { cursor_ts: string })[];
+
+    const hasMore = rows.length > q.limit;
+    const page = hasMore ? rows.slice(0, q.limit) : rows;
+    const tagRows = page.length
+      ? ((await this.dataSource.query(
+          `SELECT mt."memory_id", t."name" FROM "memory_tags" mt JOIN "tags" t ON t."id" = mt."tag_id" AND t."scope_key" = mt."scope_key"
+           WHERE mt."scope_key" = $1 AND mt."memory_id" = ANY($2::uuid[]) ORDER BY t."name"`,
+          [scopeKey, page.map((r) => r.id)],
+        )) as { memory_id: string; name: string }[])
+      : [];
+    const tagsBy = new Map<string, string[]>();
+    for (const r of tagRows) tagsBy.set(r.memory_id, [...(tagsBy.get(r.memory_id) ?? []), r.name]);
+    const last = page[page.length - 1];
+    return {
+      items: page.map((r) => toDto(r, tagsBy.get(r.id) ?? [])),
+      nextCursor: hasMore && last ? encodeCursor({ createdAt: last.cursor_ts, id: last.id }) : null,
+      hasMore,
+      limit: q.limit,
+    };
+  }
+
+  /** `memory.get`: one Memory of this scope; foreign, missing and ungranted ids are the same 404. */
+  async get(principal: Principal, scope: ScopeRef, memoryId: string): Promise<MemoryDto> {
+    this.authorization.assertCan(principal, 'memory.get', scope);
+    if (!isUuid(memoryId)) throw new NotFoundException(NOT_FOUND);
+    await this.assertScopeExists(scope);
+    return this.load(this.dataSource.manager, scopeKeyOf(scope), memoryId.toLowerCase());
+  }
 
   /**
    * `memory.remember`. An active Memory with the same scope, type and normalized content hash is reused
