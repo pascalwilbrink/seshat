@@ -246,6 +246,12 @@ Current design direction:
 - Restrained corner radii and spacing
 - Clear typography and information hierarchy
 
+The UI guide [docs/ui.md](docs/ui.md) is **binding for all UI work**:
+tokens, typography, navigation config, shared components, required page
+states, copy style, accessibility rules and the page patterns for later
+features. Read it before changing or adding any page, and update it in the
+same change when the design system changes.
+
 Use the design system and component conventions already present in the
 repository. Do not introduce a second design system or duplicate
 components unnecessarily.
