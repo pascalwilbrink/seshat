@@ -46,13 +46,16 @@ Present:
   and action catalog (see [Workspace API keys](#workspace-api-keys)).
 - Files stored on a local volume (`FILE_STORAGE_DIR`), optional Collections and flat scoped Tags, in Global and
   Workspaces: API, web pages, isolation tests and persisted post-commit cleanup of deleted originals (see
-  [Files, Collections and Tags](#files-collections-and-tags)). Files are stored, listed, edited, downloaded and deleted;
-  they are not ingested yet.
+  [Files, Collections and Tags](#files-collections-and-tags)).
+- Ingestion of `txt` and `md` files: a durable pg-boss queue, a pluggable `FileIngestor` registry, chunking with source
+  locations, OpenAI embeddings through the AI SDK, scope-safe `chunks` with pgvector, re-index and chunk-preview APIs,
+  and live indexing status in the Files UI (see [Ingestion](#ingestion)).
 - Gilde wiring: `.gilde.json`, `CLAUDE.md` and the skills sync workflow.
 
 Also present: CI (build and tests with required integration tests, see [CI](#ci)).
 
-Planned (does not exist yet): Memories, ingestion and file status transitions, text extraction, search, the MCP server, other storage backends, a
+Planned (does not exist yet): Memories, search and any retrieval over the chunks (the vectors are stored and indexed,
+nothing queries them yet), ingestors for formats other than `txt` and `md`, the MCP server, other storage backends, a
 release/deploy pipeline, and a Dockerfile. The target is one application container plus one Postgres database. There is
 no single Docker image today.
 
@@ -87,7 +90,7 @@ pnpm dev       # API on :4200 and web on :3000
    Paste the printed hash into `ADMIN_PASSWORD_HASH`. Keep it exactly as printed (it contains `$`): the API reads
    `apps/api/.env` itself and does not expand variables.
 4. Generate the session secret and put it in `SESSION_SECRET`: `openssl rand -base64 48`. Do the same for
-   `API_KEY_PEPPER` (a different value).
+   `API_KEY_PEPPER` (a different value). Put your OpenAI API key in `OPENAI_API_KEY` (embeddings).
 5. Create the file storage directory that `FILE_STORAGE_DIR` points at (default `./data/files`, relative to `apps/api`):
    `mkdir -p apps/api/data/files`.
 6. Run `pnpm dev` (migrations run at startup in development) and open <http://localhost:3000>. Log in with
@@ -103,6 +106,12 @@ pnpm dev       # API on :4200 and web on :3000
 | `API_KEY_PEPPER` | yes | At least 32 characters; secret key of the HMAC under which API keys are stored. Changing it invalidates all keys. |
 | `FILE_STORAGE_DIR` | yes (API) | Existing, writable directory on a persistent local volume for original files. See [Files, Collections and Tags](#files-collections-and-tags). |
 | `MAX_UPLOAD_BYTES` | no | Largest accepted upload in bytes, positive integer, default `52428800` (50 MB). Larger uploads get `413`. |
+| `OPENAI_API_KEY` | yes (API) | OpenAI API key for embeddings. The API refuses to start without it (the error names only the variable); migration commands do not need it. Never commit or log it. |
+| `EMBEDDING_MODEL` | no | Model name, 1-200 characters without whitespace. Default `text-embedding-3-small`. |
+| `EMBEDDING_DIMENSION` | no | Positive integer, default `1536`. Must equal the physical `chunks.embedding` column (see [Ingestion](#ingestion)). |
+| `INGESTION_CONCURRENCY` | no | Positive integer, default `2`: parallel `ingest-file` jobs per API process. |
+| `CHUNK_SIZE_CHARS` | no | Positive integer, default `2000`: maximum characters per chunk. |
+| `CHUNK_OVERLAP_CHARS` | no | Integer >= 0 and smaller than `CHUNK_SIZE_CHARS`, default `200`. |
 | `TRUST_PROXY` | no | `false` (default) or the number of trusted reverse-proxy hops (1-99), used for the client IP. |
 | `PORT` | no | 1-65535, default 4200. |
 | `NODE_ENV` | no | `development` (default), `test` or `production`. |
@@ -231,10 +240,9 @@ TEST_DATABASE_URL=postgres://seshat:seshat@localhost:5432/seshat_test REQUIRE_IN
 
 ## Files, Collections and Tags
 Original files can be stored in Global or in one Workspace, optionally organized in Collections and labelled with Tags.
-Ingestion, text extraction, chunking, embeddings, Search, Memories and MCP are **not** implemented: a file is stored,
-listed, edited, downloaded and deleted, nothing more. Every file has an `ingestionStatus`; today it is always `pending`
-(its initial value) and nothing moves it on. The `pending`, `processing`, `indexed` and `failed` values and the Tag
-tables exist so that ingestion and Memories can build on them later. The only storage backend is a local volume.
+Every upload is also ingested in the background (see [Ingestion](#ingestion)); Search, Memories and MCP are **not**
+implemented. Every file has an `ingestionStatus` (`pending`, `processing`, `indexed` or `failed`). The Tag tables exist so
+that Memories can build on them later. The only storage backend is a local volume.
 
 ### Setup and deployment
 1. **Provision the volume.** Create a directory on a persistent volume and point `FILE_STORAGE_DIR` at it. The
@@ -279,7 +287,7 @@ All routes require the admin session or a Workspace API key, and carry the scope
 | `GET /tags`, `PUT /tags/:tagId`, `DELETE /tags/:tagId` | `PUT` body `{ name }`. There is no create route: Tags come into being when a name is assigned to a file. |
 
 The metadata (`FileDto`) holds `id`, `scope`, `workspaceId`, `name`, `extension`, `mimeType`, `sizeBytes`, `sha256`,
-`collectionId`, `tags` (names), `ingestionStatus`, `createdAt` and `updatedAt`. It never includes the storage key or any
+`collectionId`, `tags` (names), `ingestionStatus`, `ingestionError`, `indexedAt`, `chunkCount`, `createdAt` and `updatedAt`. It never includes the storage key or any
 path. A Collection has `fileCount`, a Tag has `fileCount` (files in its own scope).
 
 **Upload contract.** Fields: exactly one `file` part, optional `collectionId` (a Collection of the same scope), and
@@ -297,7 +305,7 @@ permission is checked before the first byte is read. The limit is counted on the
 failure (bad multipart body, unknown Collection, scope removed meanwhile) also removes the partial object. The client
 file name is sanitized (path parts, control characters and over-long names removed); the extension, a sanitized MIME type,
 exact size and SHA-256 are recorded. The row, Collection membership and tag assignments commit in one transaction, and
-`file.uploaded` is emitted only after the commit.
+`file.uploaded` is emitted only after the commit and enqueues ingestion.
 
 **Downloads** are always `Content-Disposition: attachment` with a safe, encoded file name, `X-Content-Type-Options:
 nosniff`, `Content-Security-Policy: default-src 'none'; sandbox` and `Cache-Control: private, no-store`. An unknown or
@@ -339,7 +347,7 @@ the isolation tests). A missing permission inside a visible scope is a `403` nam
   intent stays in the database. It is retried with exponential backoff (5 s doubling to a maximum of one hour) by an
   in-process timer, and every pending intent is retried at API startup, so a crash or restart loses nothing. Claims use a
   60-second lease and `FOR UPDATE SKIP LOCKED`, so concurrent attempts do not clash. The ledger is a table, not a queue
-  library (pg-boss is not used yet).
+  library, and it is **not** replaced by pg-boss: ingestion uses the queue, original-storage cleanup keeps this ledger.
 - Diagnosing leftovers: the API logs failures as `Could not remove stored original for <fileId> (intent <intentId>, attempt
   <n>, <ErrorName>)`, never keys, paths or contents. Pending work is visible in the database:
   `SELECT id, resource_id, attempts, last_error, next_attempt_at FROM storage_cleanup_intents ORDER BY created_at;` An
@@ -363,6 +371,134 @@ Files and Collections are in the navigation for Global (`/global/files`, `/globa
 - Every list shows a loading state, an empty state ("No files yet" or "No files match these filters"), a retryable error
   state, and an expired-session message that points to login. Tags are managed through file edits in the UI; renaming or
   deleting a Tag is available through the API only.
+
+## Ingestion
+Every uploaded file is queued for ingestion: text is extracted, split into chunks that point back into the original,
+embedded and stored with its scope. Only strict UTF-8 `txt` and `md` files are supported. **Search and retrieval over the
+chunks do not exist yet**, nor do Memories or other formats (PDF, DOCX, JSON, CSV, source code): such a file is stored
+normally and ingestion ends in `failed` with `No ingestor for .<ext>`.
+
+### Queue (pg-boss)
+- pg-boss runs on the **same database** (`DATABASE_URL`) in its **own schema `pgboss`**, created and migrated by pg-boss
+  itself, never in `public`. It opens its own small pool (`INGESTION_CONCURRENCY` + 4 connections).
+- Lifecycle (`src/queue/`): it starts in `onApplicationBootstrap` after the database bootstrap, creates the `ingest-file`
+  queue and only then starts workers; on shutdown workers stop gracefully (up to 30 s for running jobs) before the
+  database pool closes. A start failure stops the API with a coded error, not a driver message.
+- A committed upload emits `file.uploaded`; a listener enqueues one `ingest-file` job with `singletonKey = fileId`. The queue
+  policy is `exclusive`: at most one queued, retrying or active job per file, so duplicate events and repeated re-index
+  requests never pile up. Finished jobs do not block a later job. If enqueueing fails the upload stays committed and the
+  file stays `pending`; ask for a re-index to recover it.
+- Each job has **3 attempts in total** (2 retries), exponential backoff starting at 10 s (capped at 300 s, jittered) and a
+  30-minute expiry. `INGESTION_CONCURRENCY` parallel jobs run per API process.
+- Jobs carry only the file id. Failure details stored by pg-boss are reduced to safe codes.
+
+### Status and errors
+`pending` -> `processing` -> `indexed` | `failed`. The file row also holds `ingestionError`, `indexedAt` and `chunkCount`.
+- `indexed`: chunks and status commit in one transaction under the file's row lock; re-running yields the same chunk ids
+  and rows (ids derive from file id, ordinal and content hash).
+- Permanent failures (unsupported extension, invalid UTF-8, original missing from storage) become `failed` at once without
+  retry. Transient ones (embedding provider, database, storage) go back to `pending` and are retried; the third failed
+  attempt makes the file `failed`.
+- `ingestionError` is one of a fixed set of safe texts (for example `File is not valid UTF-8 text`,
+  `Embedding provider request failed`, `Ingestion failed`). Raw provider or driver messages are never stored or returned.
+- A file (or Workspace) deleted while its job runs ends the job quietly and nothing is written.
+- Logs contain ids, counts, attempt numbers and error codes only: never file contents, chunk text, vectors, API keys or
+  storage keys/paths.
+- Originals stay where uploads put them (`FILE_STORAGE_DIR`, keys `originals/global/<fileId>` and
+  `originals/workspaces/<workspaceId>/<fileId>`); the ingestor reads them through `FileStorage` and never changes them.
+
+### Chunks and embeddings
+- Chunking is character based (`CHUNK_SIZE_CHARS`, `CHUNK_OVERLAP_CHARS`). Every chunk records its source file, a 0-based
+  `ordinal`, half-open UTF-16 `startOffset`/`endOffset` into the decoded original and an inclusive 1-based
+  `startLine`/`endLine`. Markdown is split at ATX headings (outside code fences) and records `headingPath` and
+  `section` (path joined with ` > `); a chunk never spans two sections.
+- Embeddings go through the `EmbeddingService` interface (`src/ingestion/embedding.service.ts`), implemented with the AI SDK's
+  `embedMany` and `@ai-sdk/openai` using `EMBEDDING_MODEL` and `OPENAI_API_KEY`. Output is checked for count, dimension and
+  finite values before anything is stored. Each chunk stores the model that produced it.
+- The `chunks` table (migration `CreateChunks`) has scope columns copied from the file, a composite foreign key to the
+  file that cascades on delete, a JSON `location`, `vector(1536)` `embedding`, an HNSW cosine index and file/scope indexes.
+- **Deletion:** deleting a file or a Workspace deletes its chunks and embeddings with the same transaction (foreign key
+  cascade). The original object is still removed by the storage cleanup ledger described above.
+
+### Changing the embedding model or dimension
+- `chunks.embedding` is physically `vector(1536)`. At startup the API inspects the real column and **refuses to start** when
+  `EMBEDDING_DIMENSION` differs, when the column is missing (migrations not run) or is not a vector. The message names only
+  the numbers.
+- To use a different dimension: write a new migration that changes the column (and index), set `EMBEDDING_DIMENSION` to the new
+  value and run the **explicit re-index** below. Existing vectors of the old dimension cannot be converted.
+- Changing only `EMBEDDING_MODEL` (same dimension) does **not** re-index anything: old chunks keep their stored
+  `embedding_model` and new ones use the new model. Mixing models in one scope gives incomparable vectors, so re-index all
+  files after a model change.
+
+### Routes
+After the scope prefix (`/api/global` or `/api/workspaces/:workspaceId`):
+
+| Route | Permission | Result |
+| --- | --- | --- |
+| `POST /files/:fileId/reindex` | `files:write` | `202` with the file; sets it to `pending`, clears the error, queues a job. A file already `processing` is left alone (its running job covers it). |
+| `POST /files/reindex` | admin session only | `202` with `{ matched, enqueued, alreadyQueued, skippedProcessing }`, no file names. Walks the scope in batches of 200. |
+| `GET /files/:fileId/chunks?limit=&cursor=` | `files:read` | `{ items, nextCursor, hasMore, limit }`, ordered by ordinal; `limit` 1-100 (default 20), `cursor` is the last ordinal seen. Items hold `id`, `fileId`, `ordinal`, `content`, `charCount` and `location`; embeddings are never returned. |
+
+Re-index is safe to repeat: the queue keeps one job per file and results are identical. If the queue is unavailable the
+previous status is restored and the response is `503`. Keys never re-index scope-wide; Global needs the admin session for
+re-indexing, and a key reads Global chunks only with `files:read` **and** `global:read`. Unknown, foreign and ungranted files
+give the same `404` as everywhere else; invalid queries give one generic `400`.
+
+### Files UI
+The Files page shows an indexing badge per file and polls (every 3 s, at most 25 files) only while files are `pending` or
+`processing`. A `failed` file shows its safe error and a **Re-index** button. The file panel shows status, indexed time and
+chunk count, and previews chunks page by page (content rendered as text only, with heading path and line range).
+
+### Adding an ingestor
+`FileIngestorProvider` builds its extension map from the injected `FILE_INGESTORS` list, so a new format needs **no change
+to the provider**. Implement `FileIngestor` (`extensions` lowercase without a dot; `ingest` returns `Document[]` and throws an
+`IngestionError` for content that can never work), then add the class to `provideFileIngestors(...)` in
+`src/ingestion/ingestion.module.ts`:
+
+```ts
+import { Injectable } from '@nestjs/common';
+import type { Document } from './document.js';
+import type { FileIngestor, IngestInput } from './file-ingestor.js';
+
+@Injectable()
+export class CsvIngestor implements FileIngestor {
+  readonly extensions = ['csv'] as const;
+
+  async ingest(input: IngestInput): Promise<Document[]> {
+    const text = await readAllAsUtf8(input.stream); // your own helper; fail with an IngestionError on bad input
+    return [
+      {
+        content: text,
+        source: { fileId: input.fileId, fileName: input.fileName, extension: input.extension },
+        startOffset: 0, // offset of content[0] in the original decoded text
+        startLine: 1, // 1-based line of content[0]
+        // page?: number, label?: string for paginated or sheet-like formats
+      },
+    ];
+  }
+}
+
+// ingestion.module.ts: ...provideFileIngestors(PlainTextIngestor, CsvIngestor)
+```
+
+`Document` carries `content`, `source` (`fileId`, `fileName`, `extension`), `startOffset`, `startLine` and optional `page` and
+`label`; the chunker turns these into chunk locations. Two ingestors claiming the same extension fail at startup.
+`PlainTextIngestor` handles `txt` and `md` with strict, fatal UTF-8 decoding (invalid bytes fail, the BOM and newlines are kept
+so offsets match the original). Test an ingestor on its own with a stream, and the whole pipeline with `FakeEmbeddingService`
+(`src/ingestion/fake-embedding.service.ts`), a deterministic, network-free `EmbeddingService`; tests never call OpenAI.
+
+### Testing the pipeline
+`pnpm test` runs unit and HTTP tests with a fake pg-boss and the fake embeddings, without a database. The real queue,
+vector, cascade-deletion and ingestion suites (`queue`, `ingestion`, `ingestion-api`, `chunks`, `vector-column`
+integration specs) need a **disposable** database as described under [Integration tests](#integration-tests):
+
+```sh
+docker compose exec db createdb -U seshat seshat_test
+TEST_DATABASE_URL=postgres://seshat:seshat@localhost:5432/seshat_test pnpm --filter @seshat/api test
+```
+
+They create throwaway pg-boss schemas and per-test application schemas. CI already requires them
+(`REQUIRE_INTEGRATION_TESTS=true`). Never point `TEST_DATABASE_URL` at a database with real data.
 
 ## Workspace API keys
 A Workspace API key is a credential owned by exactly one Workspace, for agents and applications. It is managed by the
@@ -468,20 +604,6 @@ Rules enforced by `AuthorizationService.assertCan`:
 Gilde attaches Seshat as a project MCP server using a Workspace API key. What an agent can read or write
 through it depends on that key's permissions, and on any Global knowledge explicitly granted to the key.
 There is no Seshat MCP endpoint today.
-
-## Ingestion extension point *(planned)*
-- `FileIngestor` is an interface with `forFileExtensions(): string[]` and a method that ingests a file and
-  returns `Document[]`.
-- `Document` has `content` (string) and `metadata` (a record with at least source file name, extension and
-  position/chunk info).
-- `FileIngestorProvider` gets all `FileIngestor` implementations injected through a Nest multi-provider token,
-  picks the one whose `forFileExtensions()` contains the uploaded file's extension (case-insensitive) and lets it
-  ingest. An unsupported extension is a clear error.
-- The first implementation is a plain-text ingestor for `txt` and `md`.
-
-To add a format: implement `FileIngestor` (return your extensions in `forFileExtensions()`, produce `Document[]`
-with the metadata above), register it under the `FileIngestor` injection token, and add tests. The provider
-needs no change.
 
 ## Contributing
 Coding agents: read `AGENTS.md`. The Gilde manifest is `.gilde.json`; skills are synced into `.claude/skills/`
