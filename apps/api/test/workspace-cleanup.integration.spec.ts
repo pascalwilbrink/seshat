@@ -220,6 +220,46 @@ describeIntegration('Workspace deletion cleans scoped resources and stored origi
     expect(await count('file_tags', 'scope_key = $1', [other])).toBe(2);
   });
 
+  const embedChunks = async (fileId: string, scope: 'global' | 'workspace', workspaceId: string | null, n = 2) => {
+    for (let i = 0; i < n; i++) {
+      const content = `chunk ${i}`;
+      const embedding = `[${Array.from({ length: 1536 }, (_, d) => (d === i ? 1 : 0)).join(',')}]`;
+      await ds.query(
+        `INSERT INTO chunks (scope, workspace_id, file_id, ordinal, content, location, char_count, content_hash, embedding, embedding_model)
+         VALUES ($1, $2, $3, $4, $5, '{"startOffset":0,"endOffset":7,"startLine":1,"endLine":1}', $6, repeat('a', 64), $7::vector, 'fake')`,
+        [scope, workspaceId, fileId, i, content, content.length, embedding],
+      );
+    }
+  };
+
+  it('deleting a file through the API removes its chunks and vectors only', async () => {
+    const ws = await addWorkspace('chunked');
+    const [a, b] = await populate(ws);
+    await embedChunks(a!, 'workspace', ws);
+    await embedChunks(b!, 'workspace', ws);
+    const res = await fetch(`${base}${wsFiles(ws)}/${a}`, { method: 'DELETE', headers: { cookie } });
+    expect(res.status).toBe(204);
+    expect(await count('chunks', 'file_id = $1', [a])).toBe(0);
+    expect(await count('chunks', 'file_id = $1', [b])).toBe(2);
+  });
+
+  it('deleting a Workspace through the API leaves no chunks or vectors, and other scopes keep theirs', async () => {
+    const doomed = await addWorkspace('doomed-chunks');
+    const other = await addWorkspace('other-chunks');
+    for (const f of await populate(doomed)) await embedChunks(f, 'workspace', doomed);
+    for (const f of await populate(other)) await embedChunks(f, 'workspace', other);
+    const g = (await upload('/api/global/files', 'g.txt')).json.id as string;
+    await embedChunks(g, 'global', null);
+    expect(await count('chunks')).toBe(10);
+
+    expect((await del(doomed)).status).toBe(204);
+    expect(await count('chunks', 'workspace_id = $1', [doomed])).toBe(0);
+    expect(await count('chunks', 'file_id IN (SELECT id FROM files WHERE workspace_id = $1)', [doomed])).toBe(0);
+    expect(await count('chunks')).toBe(6);
+    expect(await count('chunks', 'workspace_id = $1', [other])).toBe(4);
+    expect(await count('chunks', "scope = 'global'")).toBe(2);
+  });
+
   it('keeps the generic missing response and the slug confirmation', async () => {
     const ws = await addWorkspace('keepme');
     await populate(ws);

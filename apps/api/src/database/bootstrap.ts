@@ -1,4 +1,5 @@
 import type { DataSource } from 'typeorm';
+import { EmbeddingDimensionError, assertEmbeddingDimension } from './embedding-dimension-guard.js';
 
 /** Thrown when the database cannot be initialized. The message never contains connection details. */
 export class DatabaseBootstrapError extends Error {
@@ -25,7 +26,7 @@ function safeCode(err: unknown): string | undefined {
  */
 export async function initializeDatabase(
   ds: DataSource,
-  options: { migrateOnStart: boolean },
+  options: { migrateOnStart: boolean; embeddingDimension?: number },
 ): Promise<DataSource> {
   if (!ds.isInitialized) {
     try {
@@ -39,6 +40,15 @@ export async function initializeDatabase(
       await ds.runMigrations({ transaction: 'each' });
     } catch (err) {
       throw new DatabaseBootstrapError('migrate', safeCode(err));
+    }
+  }
+  // API-only check after migrations (CLI migration commands do not go through here); refuses before the app serves.
+  if (options.embeddingDimension !== undefined) {
+    try {
+      await assertEmbeddingDimension(ds, options.embeddingDimension);
+    } catch (err) {
+      if (err instanceof EmbeddingDimensionError) throw err;
+      throw new DatabaseBootstrapError('connect', safeCode(err));
     }
   }
   return ds;

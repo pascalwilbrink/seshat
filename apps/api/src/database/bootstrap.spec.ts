@@ -59,3 +59,40 @@ describe('initializeDatabase', () => {
     expect(`${err.message}${err.stack}`).not.toMatch(/s3cr3t|postgres:\/\//);
   });
 });
+
+describe('initializeDatabase embedding dimension guard', () => {
+  const withColumn = (rows: unknown[]) => {
+    const ds = fakeDs() as ReturnType<typeof fakeDs> & { query: ReturnType<typeof vi.fn> };
+    ds.query = vi.fn(async () => rows);
+    return ds;
+  };
+
+  it('passes when the physical dimension matches, after migrations', async () => {
+    const ds = withColumn([{ type: 'vector', dimension: 1536 }]);
+    await initializeDatabase(ds as unknown as DataSource, { migrateOnStart: true, embeddingDimension: 1536 });
+    expect(ds.runMigrations.mock.invocationCallOrder[0]).toBeLessThan(ds.query.mock.invocationCallOrder[0]!);
+  });
+
+  it('refuses a mismatch with the numbers only', async () => {
+    const ds = withColumn([{ type: 'vector', dimension: 1536 }]);
+    const err = await initializeDatabase(ds as unknown as DataSource, { migrateOnStart: false, embeddingDimension: 3072 }).catch((e: unknown) => e);
+    expect((err as Error).name).toBe('EmbeddingDimensionError');
+    expect((err as Error).message).toContain('EMBEDDING_DIMENSION is 3072');
+    expect((err as Error).message).toContain('vector(1536)');
+  });
+
+  it('refuses a missing column and does not check without a configured dimension', async () => {
+    const ds = withColumn([]);
+    await expect(initializeDatabase(ds as unknown as DataSource, { migrateOnStart: false, embeddingDimension: 1536 })).rejects.toThrow(/migration:run/);
+    const ds2 = withColumn([]);
+    await initializeDatabase(ds2 as unknown as DataSource, { migrateOnStart: false });
+    expect(ds2.query).not.toHaveBeenCalled();
+  });
+
+  it('sanitizes unexpected query failures', async () => {
+    const ds = fakeDs() as ReturnType<typeof fakeDs> & { query: ReturnType<typeof vi.fn> };
+    ds.query = vi.fn(async () => { throw new Error(`boom ${SECRET}`); });
+    const err = await initializeDatabase(ds as unknown as DataSource, { migrateOnStart: false, embeddingDimension: 1536 }).catch((e: unknown) => e);
+    expect((err as Error).message).not.toContain('s3cr3t');
+  });
+});
