@@ -7,10 +7,10 @@ search, and expose controlled access through an API and MCP.
 > **Status: early foundation.** Present: Postgres persistence, Workspace management, single-admin login and a
 > login-protected web shell with scoped Overview, Settings and API Keys pages, Workspace API keys with explicit
 > permissions, and Files on a local volume with optional Collections and flat Tags (Global and Workspace, API and web).
-> Ingestion, Memories, search and MCP are planned. See [Status](#status).
+> Ingestion and typed Memories are delivered; search, recall and MCP are planned. See [Status](#status).
 
 ## Core concepts
-Global, Workspaces, Files, Collections, Tags and Workspace API keys exist today; Memories, ingestion, search and MCP below are planned.
+Global, Workspaces, Files, Collections, Tags, Workspace API keys, ingestion and Memories exist today; search and MCP below are planned.
 
 - **Global** is a special scope for knowledge shared across the account. It is not a Workspace. Global
   resources are never available to a Workspace automatically: access must be granted explicitly.
@@ -20,7 +20,7 @@ Global, Workspaces, Files, Collections, Tags and Workspace API keys exist today;
   Collection. Originals are kept separate from extracted text, chunks and embeddings.
 - **Collections** optionally organize files within a scope. They are not security boundaries.
 - **Memories** are persistent knowledge records (`fact`, `decision`, `preference`, `experience`, `procedure`,
-  `context`), not uploaded documents. They belong to Global or one Workspace.
+  `context`), not uploaded documents. They belong to Global or one Workspace (see [Memories](#memories)).
 - **Tags** are flat labels for Files and Memories, scoped to Global or one Workspace. They help filtering but
   do not grant access.
 - **Workspace API keys** belong to a Workspace and carry explicit permissions (for example files, memories,
@@ -52,10 +52,15 @@ Present:
   and live indexing status in the Files UI (see [Ingestion](#ingestion)).
 - Gilde wiring: `.gilde.json`, `CLAUDE.md` and the skills sync workflow.
 
+- Typed Memories in Global and Workspaces: six types, server-owned provenance, exact-duplicate detection, deliberate
+  supersession, shared scoped Tags, resilient embeddings with similar-Memory hints, API and web page (see
+  [Memories](#memories)).
+
 Also present: CI (build and tests with required integration tests, see [CI](#ci)).
 
-Planned (does not exist yet): Memories, search and any retrieval over the chunks (the vectors are stored and indexed,
-nothing queries them yet), ingestors for formats other than `txt` and `md`, the MCP server, other storage backends, a
+Planned (does not exist yet): search and any retrieval over the chunks or Memories (the vectors are stored and indexed,
+nothing queries them except the similar-Memory hint on create), recall, relationships between Memories beyond
+supersession, automatic extraction of Memories, ingestors for formats other than `txt` and `md`, the MCP server, other storage backends, a
 release/deploy pipeline, and a Dockerfile. The target is one application container plus one Postgres database. There is
 no single Docker image today.
 
@@ -375,7 +380,7 @@ Files and Collections are in the navigation for Global (`/global/files`, `/globa
 ## Ingestion
 Every uploaded file is queued for ingestion: text is extracted, split into chunks that point back into the original,
 embedded and stored with its scope. Only strict UTF-8 `txt` and `md` files are supported. **Search and retrieval over the
-chunks do not exist yet**, nor do Memories or other formats (PDF, DOCX, JSON, CSV, source code): such a file is stored
+chunks do not exist yet**, nor do other formats (PDF, DOCX, JSON, CSV, source code): such a file is stored
 normally and ingestion ends in `failed` with `No ingestor for .<ext>`.
 
 ### Queue (pg-boss)
@@ -500,11 +505,144 @@ TEST_DATABASE_URL=postgres://seshat:seshat@localhost:5432/seshat_test pnpm --fil
 They create throwaway pg-boss schemas and per-test application schemas. CI already requires them
 (`REQUIRE_INTEGRATION_TESTS=true`). Never point `TEST_DATABASE_URL` at a database with real data.
 
+## Memories
+Memories are persistent knowledge records, not documents: a fact, a decision, a preference, an experience, a
+procedure or some context that an agent or the admin chose to keep. A Memory belongs to **Global or exactly one
+Workspace** and is never inside a Collection. Memories are created explicitly (admin UI or API); nothing extracts them
+from conversations automatically.
+
+### Model
+- **Types** (exactly six): `fact`, `decision`, `preference`, `experience`, `procedure`, `context`.
+- **Bounds**: `content` 1 to 10000 characters (not only whitespace); optional `title` up to 200; optional `source` (free
+  text such as a URL or `conversation`) up to 500; optional `metadata`, a JSON object of at most 8 KB; optional
+  `confidence`, a number from 0 to 1; up to 100 `tags`.
+- **Tags** are the shared scoped Tags of Files (`tags` table, flat, normalized, unique per scope); `memory_tags` is the
+  Memory join. A Tag from another scope is impossible. Tags never grant access.
+- **Status** is `active` or `superseded`; a superseded Memory has `supersededBy`, the id of its successor.
+- **Embedding**: `embeddingStatus` is `pending`, `ready` or `failed`, with `embeddingModel` once `ready`. The response
+  never contains the vector or the content hash.
+- Tables and migrations: `memories` and `memory_tags` (`CreateMemories`), `AddMemoryEmbeddingGeneration`.
+
+### Duplicates, hash and tags
+- The content hash is the SHA-256 of the content after Unicode NFC normalization, collapsing every run of whitespace to
+  one space and trimming. Case and punctuation are kept (`Use TLS` and `use tls` differ). The stored content is the
+  original text.
+- **Exact duplicate**: when an *active* Memory of the same scope, **same type** and same hash exists, create inserts
+  nothing and returns the existing Memory with `deduplicated: true` (HTTP 200 instead of 201). The requested tags are
+  added to it (a union, nothing is removed); no other field changes and no new embedding is made. A database partial
+  unique index on (scope, type, hash) among active Memories makes this safe under concurrency. Another type or another
+  scope is not a duplicate. Near duplicates are never merged; they surface as hints (below).
+
+### Supersession
+Supersession is a deliberate, transactional replacement, never automatic.
+- At create: `supersedes: "<memoryId>"` (same scope, active) marks that Memory `superseded` with `supersededBy` set to the
+  new one, in the same transaction. A missing or other-scope id is a 404, an already superseded one a 409, and
+  superseding the reused duplicate itself a 400.
+- After create: `POST .../memories/:memoryId/supersede` with `{ "successorId": "<id>" }` supersedes the Memory in the URL
+  by an existing active successor of the same scope. It creates nothing and returns the superseded Memory. Both must be
+  active (409 otherwise) and different (400). The web page calls this for **Supersede**; **Keep both** only dismisses the
+  hint and makes no request.
+- Lists show only active Memories by default; `status=superseded` or `status=all` includes the others. A superseded
+  Memory links to its successor in the UI.
+- A superseded Memory cannot be edited: `PUT` answers `409` with `supersededBy`. Update the successor instead.
+- **Forget** is a hard delete. Tag links go with it; Memories it had superseded stay `superseded` but lose the link
+  (`supersededBy: null`), so no link dangles; a successor is never touched.
+
+### Provenance
+Provenance is **server-owned**, written once at create and never changed by an update. It is a snapshot taken from the
+authenticated principal: `createdBy.kind` is `admin` or `api_key`, with `keyId` and `keyName` (the key's name at that
+moment) for a key. Later renames, revocation or deletion of the key do not change it. The REST body is strict: any
+`provenance`, `createdBy*`, `client*`, `status`, `scope`, hash or embedding field is a `400`, never ignored. A
+`provenance.client` (`name` and `version`) exists for a future, **trusted MCP adapter** that reads the client's
+`initialize` info in code; no REST input sets it. **No MCP tools are shipped** (see below).
+
+### Routes
+Under `/api/global/memories` and `/api/workspaces/:workspaceId/memories`; the table writes the path after that prefix:
+
+| Operation | Route | Action and permission |
+| --- | --- | --- |
+| List | `GET /memories` | `memory.list`, `memories:read` |
+| Get | `GET /memories/:memoryId` | `memory.get`, `memories:read` |
+| Create | `POST /memories` (201, or 200 with `deduplicated: true`) | `memory.remember`, `memories:write` |
+| Replace | `PUT /memories/:memoryId` | `memory.update`, `memories:write` |
+| Supersede | `POST /memories/:memoryId/supersede` | `memory.supersede`, `memories:write` |
+| Retry embedding | `POST /memories/:memoryId/retry-embedding` (202) | `memory.retryEmbedding`, admin only |
+| Forget | `DELETE /memories/:memoryId` (204) | `memory.forget`, `memories:delete` |
+
+- **List filters** (all optional, unknown or repeated ones are a generic `400 Invalid query`): `type`, `tag`, `status`
+  (`active` default, `superseded`, `all`), `createdFrom`, `createdTo`, `updatedFrom`, `updatedTo` (ISO 8601 date or
+  timestamp), `text` (substring, up to 200 characters), `limit` (default 25, max 100) and `cursor`. Order is newest
+  first. The response is `{ items, nextCursor, hasMore, limit }`; pass `nextCursor` as `cursor`.
+- **`PUT` is a full replacement.** `type`, `content`, `title`, `metadata`, `confidence`, `source` and `tags` are all
+  required; clear an optional value with an explicit `null` (use `[]` to clear tags). A missing field is a `400`
+  naming it. `supersedes`, scope, status and provenance are not accepted. Changing the type or content to match another
+  active Memory of the same scope is a `409`.
+- **Create** takes `type` and `content` plus optional `title`, `metadata`, `confidence`, `source` (each omitted or
+  `null`), `tags` and `supersedes`.
+- Isolation: ids of another scope, other Workspaces or unknown Memories give the same `404` (byte for byte). A key
+  needs the permission in its own Workspace; reading Global needs `global:read` plus `memories:read`, and **keys never
+  write Global**. Deleting a Workspace removes its Memories and tag links. Missing permission is a `403` naming only
+  the permission.
+
+Example with synthetic data (replace the placeholders; never paste a real key into shared notes):
+
+```sh
+curl -sS -X POST "http://localhost:3000/api/workspaces/$WORKSPACE_ID/memories" \
+  -H "Authorization: Bearer $SESHAT_API_KEY" -H 'Content-Type: application/json' \
+  -d '{"type":"decision","title":"Example","content":"The sample service uses blue buttons.","tags":["example"]}'
+```
+
+### Embeddings, hints and retries
+- A Memory is embedded from its title (when present) followed by its content, through the same `EmbeddingService` and
+  `OPENAI_API_KEY`, `EMBEDDING_MODEL` and `EMBEDDING_DIMENSION` settings as ingestion; there is no separate provider
+  configuration. `memories.embedding` is physically `vector(1536)`, like `chunks.embedding`: the API checks both columns
+  against `EMBEDDING_DIMENSION` at startup and refuses to start on a mismatch. Another dimension needs a migration plus
+  re-embedding; changing only the model never re-embeds existing Memories automatically.
+- Create and any change to the title or content commit first (the Memory is `pending`), then embed **inline** with a
+  2.5 second timeout, outside any transaction. If the provider fails or times out the Memory is kept as `pending` and a
+  durable `embed-memory` pg-boss job embeds it later: 3 attempts in total with the same exponential backoff as
+  ingestion. After the last attempt the status becomes `failed`. A reconciler (every 30 s) queues jobs for `pending`
+  Memories that lost theirs, for example after a restart. A late or stale result can never overwrite newer content
+  (a generation counter guards every write).
+- **Retry** of a `failed` Memory is admin only (`POST .../retry-embedding`, **Retry** in the UI); other statuses give `409`.
+  Only `ready` Memories take part in hints.
+- **Similar-Memory hints**: the create response contains `hints`, up to three *active* Memories of the same scope
+  with cosine similarity of at least `MEMORY_SIMILARITY_HINT` (default `0.9`, a number from 0 to 1; anything else stops
+  startup naming only the variable), each with `id`, `type` and a 120-character preview. Hints are empty for a duplicate
+  or while the embedding is pending, and are withheld from a caller without `memories:read`. Nothing is merged or
+  changed automatically; the caller chooses to supersede or keep both.
+
+### Web page
+`/global/memories` and `/w/<slug>/memories` list Memories newest first with filters (type, tag, status, text), load
+more, a detail panel with provenance, embedding status and successor links, a create/edit sheet, the similar-Memory
+choices (**Supersede** or **Keep both**), **Retry** for failed embeddings and a confirmed **Forget**, with loading,
+empty, error and success states. Edit sends the full `PUT` and never sends provenance or lifecycle fields.
+
+### Security and logging
+Contents, titles, metadata and vectors are untrusted data and are **never logged**; logs carry ids, types, statuses and
+error classes. pg-boss payloads hold only the scope, id and generation. Do not put secrets in Memories.
+
+### Testing
+Unit and HTTP tests (`pnpm test`) use `FakeEmbeddingService`, deterministic embeddings that never call OpenAI, and a
+fake queue; no database is needed. The real PostgreSQL and pg-boss suites (`apps/api/test/memories-*.integration.spec.ts`:
+model, read, lifecycle, embedding, security, cleanup, logging) run with a **disposable** database as described under
+[Integration tests](#integration-tests):
+
+```sh
+docker compose exec db createdb -U seshat seshat_test
+TEST_DATABASE_URL=postgres://seshat:seshat@localhost:5432/seshat_test pnpm --filter @seshat/api test
+```
+
+### Not included
+Search or recall over Memories, relationships other than supersession, expiry, automatic extraction and the MCP tools
+(`remember`, `recall` and friends) are not implemented; the action names `memory.recall` and the MCP client context
+are groundwork only.
+
 ## Workspace API keys
 A Workspace API key is a credential owned by exactly one Workspace, for agents and applications. It is managed by the
-admin and carries an explicit list of permissions. **Only key management, authentication and the authorization policy
-exist today.** The resource endpoints that will use keys (Files, Collections, Memories, Search) and the MCP server are
-not implemented, so a key can currently do nothing except identify itself with `GET /api/auth/me`.
+admin and carries an explicit list of permissions. Key management, authentication and the authorization policy
+exist, and Files, Collections, Tags and Memories accept a key under the permissions below. Search and the MCP server
+are not implemented.
 
 ### Setup
 1. Generate a pepper and set it in `apps/api/.env` as `API_KEY_PEPPER` (required, at least 32 characters; the API
@@ -588,7 +726,7 @@ Rules enforced by `AuthorizationService.assertCan`:
   is the separate toggle "Allow reading Global `global:read`".
 - A key can never write, delete or manage anything in Global, never manage Workspaces, and never manage keys.
 
-### Extending the policy (Files, Collections and Tags are done; for Memories, Search and MCP)
+### Extending the policy (Files, Collections, Tags and Memories are done; for Search and MCP)
 - Add each new operation to `ACTION_CATALOG` in `packages/domain/src/actions.ts` with an explicit classification
   (`read`, `write`, `delete`, `admin` or `self`) and, for the first three, its permission. There is no wildcard: an action
   not in the catalog is denied. Entries marked "future" there have no endpoint yet.
