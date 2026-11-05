@@ -5,10 +5,10 @@ import userEvent from '@testing-library/user-event';
 
 vi.mock('@/lib/api-client', () => ({ apiFetch: (p: string, i?: RequestInit) => fetch(p, i), handleUnauthorized: vi.fn() }));
 
-import { FilesView } from './files-view';
+import { FilesView, POLL_INTERVAL_MS } from './files-view';
 import { WorkspacesProvider } from './workspaces-provider';
 import { json, ws } from './shell.fixture';
-import type { FileDto } from '@/lib/api-types';
+import type { ChunkDto, FileDto } from '@/lib/api-types';
 import { handleUnauthorized } from '@/lib/api-client';
 import type { Scope } from '@/lib/scope';
 
@@ -74,6 +74,9 @@ const file = (over: Partial<FileDto> = {}): FileDto => ({
   collectionId: null,
   tags: [],
   ingestionStatus: 'pending',
+  ingestionError: null,
+  indexedAt: null,
+  chunkCount: 0,
   createdAt: '2026-03-02T10:00:00.000Z',
   updatedAt: '2026-03-02T10:00:00.000Z',
   ...over,
@@ -88,6 +91,10 @@ interface Server {
   files: Record<string, FileDto[]>;
   pageSize?: number;
   failList?: Record<string, number>;
+  /** Chunks by file id; `chunkFail` makes the chunk route answer with that status. */
+  chunks?: Record<string, ChunkDto[]>;
+  chunkFail?: number;
+  reindexFail?: number;
   seen: string[];
 }
 /** Mutable double keyed by base path (`/api/global`, `/api/workspaces/uuid-1`). */
@@ -97,13 +104,31 @@ function server(files: Record<string, FileDto[]>, extra: Partial<Server> = {}): 
     const method = init?.method ?? 'GET';
     s.seen.push(`${method} ${url}`);
     if (url === '/api/global/workspaces') return json([alpha, beta]);
-    const m = /^(\/api\/(?:global|workspaces\/[^/]+))\/(files|collections|tags)(?:\/([^/?]+))?(?:\?(.*))?$/.exec(url);
+    const m = /^(\/api\/(?:global|workspaces\/[^/]+))\/(files|collections|tags)(?:\/([^/?]+))?(?:\/(chunks|reindex))?(?:\?(.*))?$/.exec(url);
     if (!m) throw new Error(`Unexpected fetch ${method} ${url}`);
-    const [, base, kind, id, qs] = m;
+    const [, base, kind, id, sub, qs] = m;
     if (kind === 'collections') return json(COLLECTIONS);
     if (kind === 'tags') return json(TAGS);
     if (s.failList?.[base]) return json({ message: 'boom' }, s.failList[base]);
     const all = s.files[base] ?? [];
+    if (sub === 'chunks') {
+      if (s.chunkFail) return json({ message: 'x' }, s.chunkFail);
+      const all = s.chunks?.[id] ?? [];
+      const q = new URLSearchParams(qs ?? '');
+      const start = q.get('cursor') ? Number(q.get('cursor')) : 0;
+      const limit = Number(q.get('limit') ?? 10);
+      const hasMore = start + limit < all.length;
+      return json({ items: all.slice(start, start + limit), nextCursor: hasMore ? String(start + limit) : null, hasMore, limit });
+    }
+    if (sub === 'reindex') {
+      if (s.reindexFail) return json({ message: 'x' }, s.reindexFail);
+      s.files[base] = all.map((f) => (f.id === id ? { ...f, ingestionStatus: 'pending', ingestionError: null } : f));
+      return json(s.files[base].find((f) => f.id === id), 202);
+    }
+    if (method === 'GET' && id) {
+      const f = all.find((x) => x.id === id);
+      return f ? json(f) : json({ message: 'nf' }, 404);
+    }
     if (method === 'GET' && !id) {
       const q = new URLSearchParams(qs ?? '');
       let items = all.filter(
@@ -157,7 +182,7 @@ describe('FilesView list', () => {
     expect(within(row).getByText('2.0 KB')).toBeInTheDocument();
     expect(within(row).getByText('Specs')).toBeInTheDocument();
     expect(within(row).getByText('draft, x')).toBeInTheDocument();
-    expect(within(row).getByText('indexed')).toBeInTheDocument();
+    expect(within(row).getByText('Indexed')).toBeInTheDocument();
     expect(within(row).getByText('2026-03-02 10:00 UTC')).toBeInTheDocument();
   });
 
@@ -453,5 +478,194 @@ describe('FilesView scopes', () => {
     server({});
     renderView({ kind: 'workspace', slug: 'nope' });
     expect(await screen.findByText('Workspace not found')).toBeInTheDocument();
+  });
+});
+
+const chunk = (ordinal: number, content: string, location: Partial<ChunkDto['location']> = {}): ChunkDto => ({
+  id: `c${ordinal}`,
+  fileId: 'f1',
+  ordinal,
+  content,
+  charCount: content.length,
+  location: { startOffset: 0, endOffset: content.length, startLine: 1, endLine: 2, ...location },
+});
+
+describe('FilesView ingestion status', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('shows all four status badges', async () => {
+    server({
+      [G]: ['pending', 'processing', 'indexed', 'failed'].map((st, i) => file({ id: `s${i}`, name: `${st}.md`, ingestionStatus: st as FileDto['ingestionStatus'], ingestionError: st === 'failed' ? 'Unsupported file type' : null })),
+    });
+    const { container } = renderView({ kind: 'global' });
+    await screen.findByText('failed.md', { selector: 'th' });
+    for (const st of ['pending', 'processing', 'indexed', 'failed']) expect(container.querySelector(`[data-status="${st}"]`)).not.toBeNull();
+    expect(screen.getByText('Unsupported file type')).toBeInTheDocument();
+  });
+
+  it('polls only while work is active, updates the row and detail, then stops', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const s = server({ [G]: [file({ ingestionStatus: 'pending' })] }, { chunks: { f1: [chunk(0, 'hello')] } });
+    const { container } = renderView({ kind: 'global' });
+    await screen.findByRole('row', { name: /notes\.md/ });
+    await userEvent.click(screen.getByRole('button', { name: /Details/ }));
+    s.files[G] = [file({ ingestionStatus: 'indexed', indexedAt: '2026-03-02T11:00:00.000Z', chunkCount: 1 })];
+    await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS + 10);
+    await waitFor(() => expect(container.querySelectorAll('[data-status="indexed"]').length).toBeGreaterThan(0));
+    expect(await screen.findByText('2026-03-02 11:00 UTC')).toBeInTheDocument();
+    expect(await screen.findByText('hello')).toBeInTheDocument();
+    const polls = () => s.seen.filter((x) => x === `GET ${G}/files/f1`).length;
+    const n = polls();
+    expect(n).toBeGreaterThan(0);
+    await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS * 3);
+    expect(polls()).toBe(n);
+  });
+
+  it('does not poll when nothing is pending or processing', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const s = server({ [G]: [file({ ingestionStatus: 'indexed' })] });
+    renderView({ kind: 'global' });
+    await screen.findByRole('row', { name: /notes\.md/ });
+    await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS * 3);
+    expect(s.seen.some((x) => /files\/f1$/.test(x))).toBe(false);
+  });
+
+  it('stops polling on unmount and on scope change, and ignores a late poll response', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const s = server({ [G]: [file({ id: 'g', name: 'global.md' })], [A]: [file({ id: 'a', name: 'alpha.md', ingestionStatus: 'indexed' })] });
+    const real = fetchMock.getMockImplementation()!;
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === `${G}/files/g`) await gate;
+      return real(url, init);
+    });
+    const { switchTo, unmount } = renderView({ kind: 'global' });
+    await screen.findByText('global.md', { selector: 'th' });
+    await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS + 10); // poll request now waits on the gate
+    switchTo({ kind: 'workspace', slug: 'alpha' });
+    await screen.findByText('alpha.md', { selector: 'th' });
+    s.files[G] = [file({ id: 'g', name: 'late.md', ingestionStatus: 'indexed' })];
+    release();
+    await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS * 3);
+    expect(screen.queryByText('late.md')).not.toBeInTheDocument();
+    expect(s.seen.filter((x) => x === `GET ${G}/files/g`)).toHaveLength(1);
+    unmount();
+    const before = fetchMock.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS * 3);
+    expect(fetchMock.mock.calls.length).toBe(before);
+  });
+
+  it('keeps loaded pages while polling', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    server({ [G]: [file({ id: 'x1', name: 'one.md', ingestionStatus: 'indexed' }), file({ id: 'x2', name: 'two.md', ingestionStatus: 'pending' })] }, { pageSize: 1 });
+    renderView({ kind: 'global' });
+    await screen.findByText('one.md', { selector: 'th' });
+    await userEvent.click(screen.getByRole('button', { name: 'Load more' }));
+    await screen.findByText('two.md', { selector: 'th' });
+    await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS + 10);
+    expect(screen.getByText('one.md', { selector: 'th' })).toBeInTheDocument();
+    expect(screen.getByText('two.md', { selector: 'th' })).toBeInTheDocument();
+  });
+});
+
+describe('FilesView re-index', () => {
+  it('re-indexes a failed file with pending feedback and shows it as pending', async () => {
+    const s = server({ [G]: [file({ ingestionStatus: 'failed', ingestionError: 'Embedding failed' })] });
+    renderView({ kind: 'global' });
+    const row = await screen.findByRole('row', { name: /notes\.md/ });
+    await userEvent.click(within(row).getByRole('button', { name: /Re-index/ }));
+    await waitFor(() => expect(s.seen).toContain(`POST ${G}/files/f1/reindex`));
+    await waitFor(() => expect(within(screen.getByRole('row', { name: /notes\.md/ })).queryByText('Embedding failed')).not.toBeInTheDocument());
+    expect(screen.getByRole('row', { name: /notes\.md/ }).querySelector('[data-status="pending"]')).not.toBeNull();
+  });
+
+  it('shows an error when re-indexing is refused and keeps the failure', async () => {
+    server({ [G]: [file({ ingestionStatus: 'failed', ingestionError: 'Embedding failed' })] }, { reindexFail: 403 });
+    renderView({ kind: 'global' });
+    await userEvent.click(await screen.findByRole('button', { name: /Re-index/ }));
+    expect(await screen.findByText('You are not allowed to re-index this file.')).toBeInTheDocument();
+    expect(screen.getByText('Embedding failed')).toBeInTheDocument();
+  });
+
+  it('reports a network failure', async () => {
+    server({ [G]: [file({ ingestionStatus: 'failed' })] });
+    const real = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (init?.method === 'POST') throw new Error('offline');
+      return real(url, init);
+    });
+    renderView({ kind: 'global' });
+    await userEvent.click(await screen.findByRole('button', { name: /Re-index/ }));
+    expect(await screen.findByText(/Could not reach the server/)).toBeInTheDocument();
+  });
+});
+
+describe('FilesView chunk preview', () => {
+  const open = async () => {
+    await userEvent.click(await screen.findByRole('button', { name: /Details/ }));
+  };
+
+  it('shows indexed time, count, section path and line range, with paging', async () => {
+    const chunks = Array.from({ length: 12 }, (_, i) => chunk(i, `part ${i}`, i === 0 ? { headingPath: ['Intro', 'Setup'], startLine: 3, endLine: 9 } : { startLine: 10 + i, endLine: 10 + i }));
+    server({ [G]: [file({ ingestionStatus: 'indexed', indexedAt: '2026-03-02T11:00:00.000Z', chunkCount: 12 })] }, { chunks: { f1: chunks } });
+    renderView({ kind: 'global' });
+    await open();
+    expect(await screen.findByText(/Intro › Setup · lines 3–9/)).toBeInTheDocument();
+    expect(screen.getByText('2026-03-02 11:00 UTC')).toBeInTheDocument();
+    expect(screen.getByText('12')).toBeInTheDocument();
+    expect(screen.queryByText('part 11')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Load more chunks' }));
+    expect(await screen.findByText('part 11')).toBeInTheDocument();
+    expect(screen.getByText(/· line 21/)).toBeInTheDocument();
+  });
+
+  it('shows empty and failure states', async () => {
+    server({ [G]: [file({ ingestionStatus: 'pending' })] }, { chunks: { f1: [] } });
+    const first = renderView({ kind: 'global' });
+    await open();
+    expect(await screen.findByText('No content has been indexed for this file yet.')).toBeInTheDocument();
+    first.unmount();
+    fetchMock.mockReset();
+    server({ [G]: [file({ ingestionStatus: 'indexed' })] }, { chunkFail: 500 });
+    renderView({ kind: 'global' });
+    await open();
+    expect(await screen.findByText('Could not load the preview. Please try again.')).toBeInTheDocument();
+  });
+
+  it('renders hostile content as text and logs nothing', async () => {
+    const spies = (['log', 'info', 'warn', 'error', 'debug'] as const).map((k) => vi.spyOn(console, k).mockImplementation(() => {}));
+    const evil = '<img src=x onerror="window.__pwned=1"><script>window.__pwned=1</script># [x](javascript:alert(1))';
+    server({ [G]: [file({ ingestionStatus: 'indexed' })] }, { chunks: { f1: [chunk(0, evil)] } });
+    const { container } = renderView({ kind: 'global' });
+    await open();
+    const pre = await screen.findByText(evil);
+    expect(pre.tagName).toBe('PRE');
+    expect(container.querySelector('aside img, aside script, aside a[href^="javascript"]')).toBeNull();
+    expect((window as unknown as { __pwned?: number }).__pwned).toBeUndefined();
+    for (const spy of spies) expect(spy).not.toHaveBeenCalled();
+    spies.forEach((x) => x.mockRestore());
+  });
+
+  it('never shows chunks of another scope after switching', async () => {
+    server(
+      { [G]: [file({ id: 'f1', name: 'g.md', ingestionStatus: 'indexed' })], [A]: [file({ id: 'f1', name: 'a.md', ingestionStatus: 'indexed' })] },
+      { chunks: { f1: [chunk(0, 'secret global text')] } },
+    );
+    const real = fetchMock.getMockImplementation()!;
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url.startsWith(`${G}/files/f1/chunks`)) await gate;
+      return real(url, init);
+    });
+    const { switchTo } = renderView({ kind: 'global' });
+    await open();
+    switchTo({ kind: 'workspace', slug: 'alpha' });
+    await screen.findByText('a.md', { selector: 'th' });
+    release();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(screen.queryByText('secret global text')).not.toBeInTheDocument();
+    expect(screen.queryByText('Content preview')).not.toBeInTheDocument();
   });
 });

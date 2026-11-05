@@ -5,7 +5,11 @@ import { apiFetch } from '@/lib/api-client';
 import type { CollectionDto, FileDto } from '@/lib/api-types';
 import { formatSize, parseTagInput } from '@/lib/files';
 import { readFormError } from '@/lib/form-errors';
+import { formatDate } from '@/lib/files';
+import { ChunkPreview } from './chunk-preview';
 import { FormField } from './form-field';
+import { ReindexButton } from './reindex-button';
+import { StatusBadge } from './status-badge';
 import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
@@ -28,12 +32,14 @@ export function FileDetail({
   collections,
   onClose,
   onSaved,
+  onReindexed,
 }: {
   base: string;
   file: FileDto;
   collections: CollectionDto[];
   onClose: () => void;
   onSaved: (file: FileDto) => void;
+  onReindexed: (file: FileDto) => void;
 }) {
   const [name, setName] = useState(file.name);
   const [collectionId, setCollectionId] = useState(file.collectionId ?? '');
@@ -96,9 +102,25 @@ export function FileDetail({
         <dd className="m-0 min-w-0 break-words">{file.mimeType}</dd>
         <dt className="text-muted-foreground">Size</dt>
         <dd className="m-0 min-w-0 break-words">{formatSize(file.sizeBytes)}</dd>
+        <dt className="text-muted-foreground">Indexing</dt>
+        <dd className="m-0 min-w-0 break-words">
+          <StatusBadge status={file.ingestionStatus} />
+        </dd>
+        <dt className="text-muted-foreground">Indexed</dt>
+        <dd className="m-0 min-w-0 break-words">{file.indexedAt ? formatDate(file.indexedAt) : 'Not indexed yet'}</dd>
+        <dt className="text-muted-foreground">Chunks</dt>
+        <dd className="m-0 min-w-0 break-words">{file.chunkCount}</dd>
         <dt className="text-muted-foreground">SHA-256</dt>
         <dd className="m-0 font-mono break-all">{file.sha256}</dd>
       </dl>
+      {file.ingestionStatus === 'failed' && (
+        <p role="alert" className="text-sm text-destructive break-words">
+          {file.ingestionError ?? 'Indexing failed.'}
+        </p>
+      )}
+      <div className="my-2">
+        <ReindexButton base={base} file={file} onQueued={onReindexed} />
+      </div>
       <form onSubmit={submit} noValidate aria-busy={pending} aria-label={`Edit ${file.name}`} className="flex max-w-lg flex-col gap-3">
         <FormField id="file-name" label="Display name" error={fe.name}>
           {(p) => <Input {...p} type="text" value={name} onChange={(e) => setName(e.target.value)} disabled={pending} />}
@@ -136,6 +158,7 @@ export function FileDetail({
           </Button>
         </div>
       </form>
+      <ChunkPreview base={base} fileId={file.id} reloadKey={`${file.ingestionStatus}|${file.indexedAt ?? ''}`} />
     </aside>
   );
 }

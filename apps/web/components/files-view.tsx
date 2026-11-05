@@ -16,6 +16,8 @@ import { formatDate, formatSize } from '@/lib/files';
 import { readFormError } from '@/lib/form-errors';
 import { GLOBAL_OVERVIEW_PATH, type Scope } from '@/lib/scope';
 import { FileDetail } from './file-detail';
+import { ReindexButton } from './reindex-button';
+import { StatusBadge } from './status-badge';
 import { FileUploader } from './file-uploader';
 import { useWorkspaces } from './workspaces-provider';
 import { Button } from '@/components/ui/button';
@@ -26,6 +28,9 @@ import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, Tabl
 
 const NETWORK = 'Could not reach the server. Check your connection and try again.';
 const SESSION = 'Your session has expired. Log in again to continue.';
+/** How often files that are pending or processing are re-read. */
+export const POLL_INTERVAL_MS = 3000;
+const POLL_MAX_FILES = 25;
 
 async function errorText(res: Response): Promise<string> {
   if (res.status === 401) return SESSION;
@@ -161,6 +166,46 @@ function FilesPanel({ base, label }: { base: string; label: string }) {
     void loadOptions();
   }, [loadOptions]);
 
+  // Poll only the visible files that are still pending or processing. Each tick re-reads those files one by one and
+  // merges them into the loaded list (pages and filters stay as they are). The loop ends, and its timer and any
+  // in-flight result are dropped, when nothing is active any more, the scope changes or the panel unmounts.
+  const activeIds = list.status === 'ready' ? list.items.filter((f) => f.ingestionStatus === 'pending' || f.ingestionStatus === 'processing').map((f) => f.id) : [];
+  const activeKey = activeIds.join('|');
+  useEffect(() => {
+    if (!activeKey) return;
+    const ids = activeKey.split('|').slice(0, POLL_MAX_FILES);
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const tick = () => {
+      timer = setTimeout(async () => {
+        const results = await Promise.all(
+          ids.map(async (id): Promise<FileDto | 'session' | null> => {
+            try {
+              const res = await apiFetch(`${filesBase}/${encodeURIComponent(id)}`);
+              if (res.status === 401) return 'session';
+              return res.ok ? ((await res.json()) as FileDto) : null;
+            } catch {
+              return null; // Network or authorization trouble: keep the last known state and try again.
+            }
+          }),
+        );
+        if (cancelled || !mounted.current) return;
+        if (results.includes('session')) {
+          setNotice(SESSION);
+          return;
+        }
+        const fresh = new Map(results.filter((r): r is FileDto => r !== null && r !== 'session').map((f) => [f.id, f]));
+        if (fresh.size > 0) setList((l) => (l.status === 'ready' ? { ...l, items: l.items.map((i) => fresh.get(i.id) ?? i) } : l));
+        tick();
+      }, POLL_INTERVAL_MS);
+    };
+    tick();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [activeKey, filesBase]);
+
   async function loadMore() {
     if (list.status !== 'ready' || !list.nextCursor || more.pending) return;
     const id = latest.current;
@@ -199,6 +244,10 @@ function FilesPanel({ base, label }: { base: string; label: string }) {
     setApplied(NO_FILTERS);
   }
 
+  const updateFile = (next: FileDto) => {
+    if (!mounted.current) return;
+    setList((l) => (l.status === 'ready' ? { ...l, items: l.items.map((i) => (i.id === next.id ? next : i)) } : l));
+  };
   const refresh = () => {
     void loadFirst(applied, true);
     void loadOptions();
@@ -319,7 +368,15 @@ function FilesPanel({ base, label }: { base: string; label: string }) {
                   <TableCell>{formatSize(f.sizeBytes)}</TableCell>
                   <TableCell>{collectionName(f.collectionId) ?? <span className="text-muted-foreground">—</span>}</TableCell>
                   <TableCell>{f.tags.length > 0 ? f.tags.join(', ') : <span className="text-muted-foreground">—</span>}</TableCell>
-                  <TableCell>{f.ingestionStatus}</TableCell>
+                  <TableCell>
+                    <StatusBadge status={f.ingestionStatus} />
+                    {f.ingestionStatus === 'failed' && (
+                      <>
+                        <p className="mt-1 text-sm text-destructive break-words">{f.ingestionError ?? 'Indexing failed.'}</p>
+                        <ReindexButton base={filesBase} file={f} onQueued={updateFile} />
+                      </>
+                    )}
+                  </TableCell>
                   <TableCell>{formatDate(f.createdAt)}</TableCell>
                   <TableCell>
                     <a className="rounded-sm text-foreground underline underline-offset-4 hover:no-underline focus-visible:outline-2 focus-visible:outline-ring" href={`${filesBase}/${encodeURIComponent(f.id)}/download`} download>
@@ -353,10 +410,10 @@ function FilesPanel({ base, label }: { base: string; label: string }) {
           collections={collections}
           onClose={() => setSelected(null)}
           onSaved={(next) => {
-            if (!mounted.current) return;
-            setList((l) => (l.status === 'ready' ? { ...l, items: l.items.map((i) => (i.id === next.id ? next : i)) } : l));
+            updateFile(next);
             refresh();
           }}
+          onReindexed={updateFile}
         />
       )}
       {deleting && (
