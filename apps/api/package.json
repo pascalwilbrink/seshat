@@ -15,12 +15,14 @@
     "migration:create": "tsx node_modules/typeorm/cli.js migration:create"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^4.0.109",
     "@nestjs/common": "^12.3.2",
     "@nestjs/core": "^12.3.2",
     "@nestjs/event-emitter": "^12.0.1",
     "@nestjs/platform-express": "^12.3.2",
     "@nestjs/typeorm": "^12.0.2",
     "@seshat/domain": "workspace:*",
+    "ai": "^7.0.163",
     "argon2": "^0.45.2",
     "busboy": "1.6.0",
     "pg": "^8.23.1",
