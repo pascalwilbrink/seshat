@@ -75,11 +75,17 @@ describe('action catalog', () => {
       'file.upload': 'files:write',
       'file.update': 'files:write',
       'file.delete': 'files:delete',
+      'file.reindex': 'files:write',
+      'file.chunks': 'files:read',
     } as const;
     for (const [action, permission] of Object.entries(files)) {
       expect(getActionRequirement(action), action).toMatchObject({ permission });
     }
     expect(ACTIONS.filter((a) => a.startsWith('file.')).sort()).toEqual(Object.keys(files).sort());
+  });
+
+  it('keeps re-indexing a whole scope admin-only', () => {
+    expect(getActionRequirement('fileIndex:reindexScope')).toEqual({ classification: 'admin' });
   });
 
   it('maps Collection operations to collections:read or collections:write', () => {

@@ -19,7 +19,7 @@ import { extensionOf, sanitizeFileName, sanitizeMimeType } from './file-name.js'
 import { type FileListPage, encodeCursor, parseFileListQuery } from './file-list-query.js';
 import { receiveUpload } from './upload-reader.js';
 
-const FILE_COLUMNS_F = ['id', 'scope', 'workspace_id', 'name', 'extension', 'mime_type', 'size_bytes', 'sha256', 'collection_id', 'ingestion_status', 'created_at', 'updated_at']
+const FILE_COLUMNS_F = ['id', 'scope', 'workspace_id', 'name', 'extension', 'mime_type', 'size_bytes', 'sha256', 'collection_id', 'ingestion_status', 'ingestion_error', 'indexed_at', 'chunk_count', 'created_at', 'updated_at']
   .map((c) => `f."${c}"`)
   .join(', ');
 
@@ -228,6 +228,16 @@ export class FilesService {
     return { stream, name: row.name, mimeType: row.mime_type, sizeBytes: Number(row.size_bytes) };
   }
 
+  /**
+   * INTERNAL: the file's DTO without an authorization check. Callers must have authorized an action on this scope
+   * first (re-index returns the file to a `files:write` key). A missing file is the generic 404.
+   */
+  async loadDto(scope: ScopeRef, fileId: string): Promise<FileDto> {
+    const row = await this.findRow(scope, fileId);
+    const tags = await this.tagNamesFor(scopeKeyOf(scope), [row.id]);
+    return toFileDto(row, tags.get(row.id) ?? []);
+  }
+
   private async findRow(scope: ScopeRef, fileId: string, withKey = false): Promise<FileRow & { storage_key?: string }> {
     if (!isUuid(fileId)) throw new NotFoundException('Not Found');
     await this.assertScopeExists(scope);
@@ -253,7 +263,7 @@ export class FilesService {
 
   private async load(manager: EntityManager, scope: ScopeRef, id: string, tagNames: string[]): Promise<FileDto> {
     const rows = (await manager.query(
-      `SELECT "id", "scope", "workspace_id", "name", "extension", "mime_type", "size_bytes", "sha256", "collection_id", "ingestion_status", "created_at", "updated_at"
+      `SELECT "id", "scope", "workspace_id", "name", "extension", "mime_type", "size_bytes", "sha256", "collection_id", "ingestion_status", "ingestion_error", "indexed_at", "chunk_count", "created_at", "updated_at"
        FROM "files" WHERE "id" = $1 AND "scope_key" = $2`,
       [id, scopeKeyOf(scope)],
     )) as FileRow[];

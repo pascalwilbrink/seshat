@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { AuthModule } from '../auth/auth.module.js';
+import { FilesModule } from '../files/files.module.js';
 import { getDataSourceToken } from '@nestjs/typeorm';
 import type { DataSource } from 'typeorm';
 import { APP_CONFIG, type AppConfig } from '../config/app-config.js';
@@ -6,6 +8,9 @@ import { FILE_STORAGE, type FileStorage } from '../storage/file-storage.js';
 import { AiSdkEmbeddingService } from './ai-sdk-embedding.service.js';
 import { EMBEDDING_SERVICE, type EmbeddingService } from './embedding.service.js';
 import { FileIngestorProvider, provideFileIngestors } from './file-ingestor.provider.js';
+import { ChunksService } from './chunks.service.js';
+import { IngestionController } from './ingestion.controller.js';
+import { ReindexService } from './reindex.service.js';
 import { IngestionProcessor } from './ingestion.processor.js';
 import { INGESTION_PROCESSOR, IngestionWorker } from './ingestion.worker.js';
 import { PlainTextIngestor } from './plain-text.ingestor.js';
@@ -15,7 +20,11 @@ import { PlainTextIngestor } from './plain-text.ingestor.js';
  * fails with a sanitized ConfigError without it), the processor and the queue worker plus `file.uploaded` listener.
  */
 @Module({
+  imports: [AuthModule, FilesModule],
+  controllers: [IngestionController],
   providers: [
+    ChunksService,
+    ReindexService,
     ...provideFileIngestors(PlainTextIngestor),
     { provide: EMBEDDING_SERVICE, inject: [APP_CONFIG], useFactory: (config: AppConfig): EmbeddingService => new AiSdkEmbeddingService(config) },
     {

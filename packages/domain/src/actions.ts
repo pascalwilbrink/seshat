@@ -72,6 +72,10 @@ export const ACTION_CATALOG = {
   'file.upload': res('write', 'files:write'),
   'file.update': res('write', 'files:write'),
   'file.delete': res('delete', 'files:delete'),
+  // Ingestion: re-index one file (files:write), preview its chunks (files:read), re-index a whole scope (admin only).
+  'file.reindex': res('write', 'files:write'),
+  'file.chunks': res('read', 'files:read'),
+  'fileIndex:reindexScope': ADMIN,
   // Collections: never grant access to files.
   'collection.list': res('read', 'collections:read'),
   'collection.get': res('read', 'collections:read'),

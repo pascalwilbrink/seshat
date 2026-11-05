@@ -176,7 +176,7 @@ describe('policy matrix: API key principal', () => {
   });
 
   it('keeps Collection and Tag permissions from conferring file access, and the reverse', () => {
-    for (const action of ['file.list', 'file.get', 'file.download', 'file.upload', 'file.update', 'file.delete'] as const) {
+    for (const action of ['file.list', 'file.get', 'file.download', 'file.upload', 'file.update', 'file.delete', 'file.reindex', 'file.chunks'] as const) {
       expect(service.can(keyWith(['collections:read', 'collections:write', 'memories:read', 'memories:write', 'search', 'global:read']), action, scopes.own), action).toBe(false);
     }
     for (const action of ['collection.list', 'collection.get', 'collection.create', 'collection.update', 'collection.delete'] as const) {
