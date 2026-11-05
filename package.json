@@ -4,7 +4,8 @@
   "packageManager": "pnpm@10.28.0",
   "scripts": {
     "build": "pnpm -r build",
-    "test": "pnpm -r test",
+    "test": "pnpm -r test && pnpm test:docker",
+    "test:docker": "node --test docker/test/*.spec.mjs",
     "dev": "pnpm -r --parallel dev"
   }
 }
