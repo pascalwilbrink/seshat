@@ -385,13 +385,14 @@ describeIntegration('Files, Collections and Tags model (real PostgreSQL)', () =>
         const tables = async () =>
           (await iso.query(`SELECT table_name FROM information_schema.tables WHERE table_schema = '${iso.schema}' ORDER BY table_name`)).map((t) => t.table_name);
         expect(await tables()).toEqual(expect.arrayContaining(['chunks', 'collections', 'file_tags', 'files', 'tags']));
+        await d.undoLastMigration({ transaction: 'each' }); // memories
         await d.undoLastMigration({ transaction: 'each' }); // chunks
         await d.undoLastMigration({ transaction: 'each' }); // storage cleanup ledger
         await d.undoLastMigration({ transaction: 'each' });
         const after = await tables();
         for (const t of ['chunks', 'collections', 'file_tags', 'files', 'tags']) expect(after).not.toContain(t);
         expect(after).toContain('workspaces');
-        expect(await d.runMigrations({ transaction: 'each' })).toHaveLength(3);
+        expect(await d.runMigrations({ transaction: 'each' })).toHaveLength(4);
       } finally {
         await d.destroy();
       }
