@@ -62,10 +62,11 @@ describeIntegration('migrations (real PostgreSQL)', () => {
     const tables = await iso.query(
       `SELECT table_name FROM information_schema.tables WHERE table_schema = '${iso.schema}' ORDER BY table_name`,
     );
-    expect(tables.map((t) => t.table_name)).toEqual(['api_keys', 'chunks', 'collections', 'file_tags', 'files', 'migrations', 'storage_cleanup_intents', 'tags', 'workspaces']);
+    expect(tables.map((t) => t.table_name)).toEqual(['api_keys', 'chunks', 'collections', 'file_tags', 'files', 'memories', 'memory_tags', 'migrations', 'storage_cleanup_intents', 'tags', 'workspaces']);
   });
 
-  it('down drops files tables, api_keys, then workspaces, then the extension; re-up succeeds', async () => {
+  it('down drops memories, files tables, api_keys, then workspaces, then the extension; re-up succeeds', async () => {
+    await ds.undoLastMigration({ transaction: 'each' });
     await ds.undoLastMigration({ transaction: 'each' });
     await ds.undoLastMigration({ transaction: 'each' });
     await ds.undoLastMigration({ transaction: 'each' });
@@ -81,7 +82,7 @@ describeIntegration('migrations (real PostgreSQL)', () => {
     expect(await vectorInstalled()).toBe(false);
 
     const again = await ds.runMigrations({ transaction: 'each' });
-    expect(again).toHaveLength(6);
+    expect(again).toHaveLength(7);
     expect(await vectorInstalled()).toBe(true);
   });
 

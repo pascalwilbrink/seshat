@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type { AddressInfo } from 'node:net';
 import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -32,6 +32,8 @@ import { StorageCleanupIntent } from '../src/storage/storage-cleanup-intent.enti
 import { StorageCleanupListener } from '../src/storage/storage-cleanup.listener.js';
 import { StorageCleanupService } from '../src/storage/storage-cleanup.service.js';
 import { WorkspaceDataCleanup } from '../src/storage/workspace-data-cleanup.js';
+import { Memory } from '../src/memories/memory.entity.js';
+import { MemoryTag } from '../src/memories/memory-tag.entity.js';
 import { FileTag } from '../src/tags/file-tag.entity.js';
 import { Tag } from '../src/tags/tag.entity.js';
 import { TagsService } from '../src/tags/tags.service.js';
@@ -131,7 +133,7 @@ describeIntegration('Workspace deletion cleans scoped resources and stored origi
     assertDisposableDatabase(TEST_DATABASE_URL!);
     iso = await createIsolatedSchema();
     await iso.query('DROP EXTENSION IF EXISTS vector');
-    ds = iso.createDataSource([Workspace, ApiKey, Collection, Tag, FileTag, FileRecord, StorageCleanupIntent]);
+    ds = iso.createDataSource([Workspace, ApiKey, Collection, Tag, FileTag, FileRecord, StorageCleanupIntent, Memory, MemoryTag]);
     await ds.initialize();
     await ds.runMigrations({ transaction: 'each' });
     root = await mkdtemp(path.join(tmpdir(), 'seshat-wscleanup-'));
@@ -182,6 +184,7 @@ describeIntegration('Workspace deletion cleans scoped resources and stored origi
     storage.afterPut = undefined;
     errors.length = 0;
     await ds.query('DELETE FROM storage_cleanup_intents');
+    await ds.query('DELETE FROM memories');
     await ds.query('DELETE FROM file_tags');
     await ds.query('DELETE FROM files');
     await ds.query('DELETE FROM tags');
@@ -218,6 +221,71 @@ describeIntegration('Workspace deletion cleans scoped resources and stored origi
     expect(await count('tags', `workspace_id = $1`, [other])).toBe(2);
     expect(await count('tags', `scope = 'global'`)).toBe(1);
     expect(await count('file_tags', 'scope_key = $1', [other])).toBe(2);
+  });
+
+  const addMemory = async (ws: string | null, content: string, extra: { supersededBy?: string } = {}) => {
+    const id = ((await ds.query(
+      `INSERT INTO memories (scope, workspace_id, type, content, created_by_kind, content_hash) VALUES ($1, $2, 'fact', $3, 'admin', $4) RETURNING id`,
+      [ws ? 'workspace' : 'global', ws, content, createHash('sha256').update(`${ws}${content}`).digest('hex')],
+    )) as { id: string }[])[0]!.id;
+    if (extra.supersededBy) await ds.query(`UPDATE memories SET status = 'superseded', superseded_by = $2 WHERE id = $1`, [id, extra.supersededBy]);
+    return id;
+  };
+  const tagMemory = async (memoryId: string, ws: string | null, name: string) => {
+    const key = ws ?? 'global';
+    const tag = ((await ds.query(
+      `INSERT INTO tags (scope, workspace_id, name) VALUES ($1, $2, $3) ON CONFLICT (scope_key, name) DO UPDATE SET name = EXCLUDED.name RETURNING id`,
+      [ws ? 'workspace' : 'global', ws, name],
+    )) as { id: string }[])[0]!.id;
+    await ds.query('INSERT INTO memory_tags (memory_id, tag_id, scope_key) VALUES ($1, $2, $3)', [memoryId, tag, key]);
+  };
+
+  it('deleting a Workspace removes its Memories and tag joins together with files; other scopes and file cleanup survive', async () => {
+    const doomed = await addWorkspace('doomed-memories');
+    const other = await addWorkspace('other-memories');
+    await populate(doomed);
+    await populate(other);
+    const newer = await addMemory(doomed, 'newer');
+    await addMemory(doomed, 'older', { supersededBy: newer });
+    await tagMemory(newer, doomed, 'shared');
+    const otherMemory = await addMemory(other, 'keep me');
+    await tagMemory(otherMemory, other, 'shared');
+    const globalMemory = await addMemory(null, 'global keep');
+    await tagMemory(globalMemory, null, 'shared');
+    expect((await objects()).length).toBe(4);
+
+    expect((await del(doomed)).status).toBe(204);
+    await vi.waitFor(async () => expect(await intents()).toEqual([]));
+
+    expect(await count('memories', 'workspace_id = $1', [doomed])).toBe(0);
+    expect(await count('memory_tags', 'scope_key = $1', [doomed])).toBe(0);
+    expect(await count('tags', 'workspace_id = $1', [doomed])).toBe(0);
+    expect(await count('files', 'workspace_id = $1', [doomed])).toBe(0);
+    expect((await objects()).length).toBe(2); // only the originals of "other"
+    expect(await count('memories', 'workspace_id = $1', [other])).toBe(1);
+    expect(await count('memory_tags', 'scope_key = $1', [other])).toBe(1);
+    expect(await count('memories', "scope = 'global'")).toBe(1);
+    expect(await count('memory_tags', "scope_key = 'global'")).toBe(1);
+    expect(await count('files', 'workspace_id = $1', [other])).toBe(2);
+  });
+
+  it('a failing Memory cleanup rolls the whole Workspace delete back, files and ledger included', async () => {
+    const ws = await addWorkspace('rollback-memories');
+    await populate(ws);
+    const m = await addMemory(ws, 'stays');
+    await ds.query(`CREATE OR REPLACE FUNCTION fn_test_block_memory_delete() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'blocked'; END $$`);
+    await ds.query('CREATE TRIGGER tr_test_block_memory_delete BEFORE DELETE ON memories FOR EACH ROW EXECUTE FUNCTION fn_test_block_memory_delete()');
+    try {
+      expect((await del(ws)).status).toBeGreaterThanOrEqual(500);
+    } finally {
+      await ds.query('DROP TRIGGER tr_test_block_memory_delete ON memories');
+      await ds.query('DROP FUNCTION fn_test_block_memory_delete()');
+    }
+    expect(await count('memories', 'id = $1', [m])).toBe(1);
+    expect(await count('files', 'workspace_id = $1', [ws])).toBe(2);
+    expect(await count('workspaces', 'id = $1', [ws])).toBe(1);
+    expect(await intents()).toEqual([]);
+    expect((await objects()).length).toBe(2);
   });
 
   const embedChunks = async (fileId: string, scope: 'global' | 'workspace', workspaceId: string | null, n = 2) => {
