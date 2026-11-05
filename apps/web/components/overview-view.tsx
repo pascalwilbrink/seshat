@@ -5,6 +5,15 @@ import { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api-client';
 import type { OverviewDto } from '@/lib/api-types';
 import { GLOBAL_OVERVIEW_PATH, scopeHref, type Scope } from '@/lib/scope';
+import { Boxes } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
+import { EmptyState } from './empty-state';
+import { ErrorState } from './error-state';
+import { PageHeader } from './page-header';
+import { RelativeTime } from './relative-time';
+import { StatCard } from './stat-card';
 import { useWorkspaces } from './workspaces-provider';
 
 type Load = { status: 'loading' } | { status: 'error' } | { status: 'not-found' } | { status: 'ready'; data: OverviewDto };
@@ -48,71 +57,84 @@ export function OverviewView({ scope }: { scope: Scope }) {
 
   if (slug !== null && collection.status === 'error') {
     return (
-      <section>
-        <h1>Overview</h1>
-        <p role="alert">Could not load Workspaces.</p>
-        <button type="button" onClick={reload}>
-          Retry
-        </button>
+      <section className="flex flex-col gap-6">
+        <PageHeader title="Overview" />
+        <ErrorState title="Could not load Workspaces" message="Check your connection and try again." retryLabel="Retry" onRetry={reload} />
       </section>
     );
   }
   if (unknownSlug || load.status === 'not-found') {
     return (
-      <section>
-        <h1>Workspace not found</h1>
-        <p className="muted">This Workspace does not exist or is not available to you.</p>
-        <Link href={GLOBAL_OVERVIEW_PATH}>Go to Global Overview</Link>
+      <section className="flex flex-col gap-6">
+        <PageHeader title="Workspace not found" description="This Workspace does not exist or is not available to you." />
+        <div>
+          <Button asChild variant="outline">
+            <Link href={GLOBAL_OVERVIEW_PATH}>Go to Global Overview</Link>
+          </Button>
+        </div>
       </section>
     );
   }
   if (load.status === 'error') {
     return (
-      <section>
-        <h1>Overview</h1>
-        <p role="alert">Could not load the Overview.</p>
-        <button type="button" onClick={retry}>
-          Retry
-        </button>
+      <section className="flex flex-col gap-6">
+        <PageHeader title="Overview" />
+        <ErrorState title="Could not load the Overview" message="Check your connection and try again." retryLabel="Retry" onRetry={retry} />
       </section>
     );
   }
   if (load.status === 'loading' || (slug !== null && collection.status === 'loading')) {
     return (
-      <section aria-busy="true">
-        <h1>Overview</h1>
-        <p role="status" className="muted">
+      <section aria-busy="true" className="flex flex-col gap-6">
+        <PageHeader title="Overview" />
+        <p role="status" className="sr-only">
           Loading…
         </p>
+        <Skeleton className="h-24 w-full max-w-md" />
       </section>
     );
   }
 
   const data = load.data;
-  const noWorkspaces = data.scope === 'global' && collection.status === 'ready' && collection.workspaces.length === 0;
+  const workspaceCount = collection.status === 'ready' ? collection.workspaces.length : null;
+  if (data.scope === 'global') {
+    return (
+      <section className="flex flex-col gap-6">
+        <PageHeader title={data.name} description="Knowledge shared across the account." />
+        {workspaceCount === 0 ? (
+          <EmptyState
+            title="No Workspaces yet"
+            description="Workspaces keep knowledge separate. Create one to get started."
+            icon={Boxes}
+            action={
+              <Button asChild>
+                <Link href="/global/settings">Create your first Workspace</Link>
+              </Button>
+            }
+          />
+        ) : workspaceCount !== null ? (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <StatCard label="Workspaces" value={workspaceCount} icon={Boxes} hint="Available to you" />
+          </div>
+        ) : null}
+      </section>
+    );
+  }
   return (
-    <section>
-      <p className="scope-label">{data.scope === 'global' ? 'Global' : 'Workspace'}</p>
-      <h1>{data.name}</h1>
-      {data.scope === 'workspace' && (
-        <dl className="meta">
-          <dt>Slug</dt>
-          <dd>{data.slug}</dd>
-          <dt>Description</dt>
-          <dd>{data.description ?? <span className="muted">No description</span>}</dd>
-          <dt>Created</dt>
-          <dd>
-            <time dateTime={data.createdAt}>{new Date(data.createdAt).toLocaleDateString('en-GB', { dateStyle: 'long', timeZone: 'UTC' })}</time>
+    <section className="flex flex-col gap-6">
+      <PageHeader title={data.name} />
+      <Card className="min-w-0 p-4">
+        <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-[auto_1fr]">
+          <dt className="text-muted-foreground">Slug</dt>
+          <dd className="min-w-0 break-words font-mono">{data.slug}</dd>
+          <dt className="text-muted-foreground">Description</dt>
+          <dd className="min-w-0 break-words">{data.description ?? <span className="text-muted-foreground">No description</span>}</dd>
+          <dt className="text-muted-foreground">Created</dt>
+          <dd className="min-w-0">
+            {new Date(data.createdAt).toLocaleDateString('en-GB', { dateStyle: 'long', timeZone: 'UTC' })} · <RelativeTime value={data.createdAt} />
           </dd>
         </dl>
-      )}
-      {noWorkspaces && (
-        <p>
-          <Link href="/global/settings" className="cta">
-            Create your first Workspace
-          </Link>
-        </p>
-      )}
+      </Card>
     </section>
   );
 }

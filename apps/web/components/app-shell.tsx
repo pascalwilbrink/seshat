@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Sheet, SheetContent, SheetDescription, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { FlashToast } from './flash-toast';
 import { ScopeBadge } from './scope-badge';
 import { ScopeSwitcher } from './scope-switcher';
 import { WorkspacesProvider, useWorkspaces } from './workspaces-provider';
@@ -183,6 +184,7 @@ export function AppShell({ username, children }: { username: string; children: R
 
   return (
     <WorkspacesProvider>
+      <FlashToast />
       <TooltipProvider delayDuration={200}>
         <div className="flex min-h-screen">
           <a
