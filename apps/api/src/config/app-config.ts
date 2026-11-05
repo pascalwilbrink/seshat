@@ -31,7 +31,28 @@ export interface AppConfig {
   fileStorageDir: string | undefined;
   /** Largest accepted upload in bytes (positive integer). Default: 50 MB. */
   maxUploadBytes: number;
+  /** Parallel `ingest-file` jobs per process (positive integer). Default: 2. */
+  ingestionConcurrency: number;
+  /** Maximum characters per chunk (positive integer). Default: 2000. */
+  chunkSizeChars: number;
+  /** Characters shared by consecutive chunks (integer >= 0 and smaller than the chunk size). Default: 200. */
+  chunkOverlapChars: number;
+  /**
+   * OpenAI API key for embeddings; never logged. Optional here so that tools which only need the database (migration
+   * CLI) can load the config; the embedding service refuses to be built without it (`requireOpenAiApiKey`).
+   */
+  openaiApiKey: string | undefined;
+  /** Embedding model name (non-empty). Default: text-embedding-3-small. */
+  embeddingModel: string;
+  /** Embedding vector dimension (positive integer). Default: 1536. Must match the physical `chunks` column. */
+  embeddingDimension: number;
 }
+
+export const DEFAULT_INGESTION_CONCURRENCY = 2;
+export const DEFAULT_CHUNK_SIZE_CHARS = 2000;
+export const DEFAULT_CHUNK_OVERLAP_CHARS = 200;
+export const DEFAULT_EMBEDDING_MODEL = 'text-embedding-3-small';
+export const DEFAULT_EMBEDDING_DIMENSION = 1536;
 
 export const DEFAULT_MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 
@@ -71,6 +92,12 @@ function isPostgresUrl(value: string): boolean {
   } catch {
     return false;
   }
+}
+
+/** Returns the OpenAI API key or throws a ConfigError naming only the variable. */
+export function requireOpenAiApiKey(config: Pick<AppConfig, 'openaiApiKey'>): string {
+  if (!config.openaiApiKey) throw new ConfigError([{ variable: 'OPENAI_API_KEY', reason: 'is required' }]);
+  return config.openaiApiKey;
 }
 
 /** Validates an environment map. Empty strings count as unset. Pure: never reads process.env. */
@@ -203,6 +230,48 @@ export function loadConfig(env: EnvSource): AppConfig {
     }
   }
 
+  const positiveInt = (name: string, fallback: number): number => {
+    const raw = get(name);
+    if (raw === undefined) return fallback;
+    const n = /^[1-9]\d{0,8}$/.test(raw) ? Number(raw) : NaN;
+    if (Number.isSafeInteger(n)) return n;
+    problems.push({ variable: name, reason: 'must be a positive integer' });
+    return fallback;
+  };
+
+  const ingestionConcurrency = positiveInt('INGESTION_CONCURRENCY', DEFAULT_INGESTION_CONCURRENCY);
+  const chunkSizeChars = positiveInt('CHUNK_SIZE_CHARS', DEFAULT_CHUNK_SIZE_CHARS);
+
+  let chunkOverlapChars = DEFAULT_CHUNK_OVERLAP_CHARS;
+  const rawOverlap = get('CHUNK_OVERLAP_CHARS');
+  if (rawOverlap !== undefined) {
+    const n = /^(0|[1-9]\d{0,8})$/.test(rawOverlap) ? Number(rawOverlap) : NaN;
+    if (Number.isSafeInteger(n)) {
+      chunkOverlapChars = n;
+    } else {
+      problems.push({ variable: 'CHUNK_OVERLAP_CHARS', reason: 'must be an integer of at least 0' });
+    }
+  }
+  if (!problems.some((p) => p.variable === 'CHUNK_SIZE_CHARS' || p.variable === 'CHUNK_OVERLAP_CHARS')) {
+    if (chunkOverlapChars >= chunkSizeChars) {
+      problems.push({ variable: 'CHUNK_OVERLAP_CHARS', reason: 'must be smaller than CHUNK_SIZE_CHARS' });
+    }
+  }
+
+  const openaiApiKey = get('OPENAI_API_KEY');
+
+  let embeddingModel = DEFAULT_EMBEDDING_MODEL;
+  const rawModel = env.EMBEDDING_MODEL;
+  if (rawModel !== undefined && rawModel !== '') {
+    if (rawModel.trim() === '' || rawModel.length > 200 || /[\s\0]/.test(rawModel)) {
+      problems.push({ variable: 'EMBEDDING_MODEL', reason: 'must be a model name of 1-200 characters without whitespace' });
+    } else {
+      embeddingModel = rawModel;
+    }
+  }
+
+  const embeddingDimension = positiveInt('EMBEDDING_DIMENSION', DEFAULT_EMBEDDING_DIMENSION);
+
   if (problems.length > 0) throw new ConfigError(problems);
   return {
     nodeEnv,
@@ -216,5 +285,11 @@ export function loadConfig(env: EnvSource): AppConfig {
     trustProxy,
     fileStorageDir,
     maxUploadBytes,
+    ingestionConcurrency,
+    chunkSizeChars,
+    chunkOverlapChars,
+    openaiApiKey,
+    embeddingModel,
+    embeddingDimension,
   };
 }
