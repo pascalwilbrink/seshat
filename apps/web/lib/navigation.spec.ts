@@ -15,13 +15,15 @@ describe('navigation config', () => {
     expect(labels('system')).toEqual(['Settings']);
     expect(NAV_AREAS.filter((a) => a.group === 'developer').every((a) => a.scopes.length === 1 && a.scopes[0] === 'workspace')).toBe(true);
   });
-  it('lists Overview, Memories and Settings, in both scopes', () => {
+  it('lists Overview, Search, Memories and Settings, in both scopes', () => {
     for (const scope of [G, W]) {
-      expect(visibleGroups(scope).flatMap((g) => g.areas.map((a) => a.label))).toEqual(['Overview', 'Memories', 'Settings']);
+      expect(visibleGroups(scope).flatMap((g) => g.areas.map((a) => a.label))).toEqual(['Overview', 'Search', 'Memories', 'Settings']);
     }
   });
   it('still resolves direct routes of unavailable areas', () => {
     expect(areaFromPathname('/w/a/files')?.id).toBe('files');
+    expect(areaFromPathname('/w/a/search')?.id).toBe('search');
+    expect(areaFromPathname('/global/search')?.id).toBe('search');
     expect(areaFromPathname('/global/collections')?.id).toBe('collections');
     expect(areaFromPathname('/w/a/api-keys')?.id).toBe('api-keys');
     expect(areaFromPathname('/global/api-keys')).toBeNull();
@@ -31,6 +33,8 @@ describe('navigation config', () => {
     expect(switchScopeHref(W, byId('settings'))).toBe('/w/a/settings');
     expect(switchScopeHref(G, byId('settings'))).toBe('/global/settings');
     expect(switchScopeHref(W, byId('files'))).toBe('/w/a/overview'); // unavailable
+    expect(switchScopeHref(W, byId('search'))).toBe('/w/a/search'); // section is kept
+    expect(switchScopeHref(G, byId('search'))).toBe('/global/search');
     expect(switchScopeHref(W, byId('memories'))).toBe('/w/a/memories');
     expect(switchScopeHref(G, byId('memories'))).toBe('/global/memories');
     expect(switchScopeHref(G, byId('api-keys'))).toBe('/global/overview'); // Workspace-only
@@ -51,7 +55,7 @@ describe('future extension needs only a config entry', () => {
   });
   it('shows an existing area once its availability flag is switched on', () => {
     const on = areas.map((a) => (a.id === 'files' ? { ...a, available: true } : a));
-    expect(visibleGroups(G, on)[0]!.areas.map((a) => a.label)).toEqual(['Overview', 'Files', 'Memories']);
+    expect(visibleGroups(G, on)[0]!.areas.map((a) => a.label)).toEqual(['Overview', 'Files', 'Search', 'Memories']);
     expect(switchScopeHref(W, on.find((a) => a.id === 'files')!, on)).toBe('/w/a/files');
   });
   it('uses a typed icon per area', () => {

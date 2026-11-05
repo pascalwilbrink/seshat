@@ -162,3 +162,63 @@ export interface MemoryHintDto {
 
 /** Create response: the saved (or reused) Memory, whether it was a duplicate, and similar-Memory hints. */
 export type CreateMemoryResultDto = MemoryDto & { deduplicated: boolean; hints: MemoryHintDto[] };
+
+/** Where a search result lives. Global is a scope, never a Workspace. */
+export type SearchResultScopeDto = { kind: 'global' } | { kind: 'workspace'; id: string; slug: string };
+
+interface SearchResultBaseDto {
+  score: number;
+  vectorRank: number | null;
+  keywordRank: number | null;
+  scope: SearchResultScopeDto;
+  /** Untrusted text. */
+  content: string;
+}
+
+export interface ChunkSearchResultDto extends SearchResultBaseDto {
+  kind: 'chunk';
+  id: string;
+  file: { id: string; name: string };
+  collectionId: string | null;
+  ordinal: number;
+  location: ChunkLocationDto;
+}
+
+export interface MemorySearchResultDto extends SearchResultBaseDto {
+  kind: 'memory';
+  id: string;
+  memoryType: MemoryType;
+  title: string | null;
+  tags: string[];
+  status: MemoryStatus;
+  confidence: number | null;
+  source: string | null;
+  provenance: MemoryDto['provenance'];
+  updatedAt: string;
+}
+
+export type SearchResultDto = ChunkSearchResultDto | MemorySearchResultDto;
+
+/** Deliberately without totals or excluded counts. `degraded` is present only for keyword-only results. */
+export interface SearchResponseDto {
+  results: SearchResultDto[];
+  degraded?: 'keyword_only';
+}
+
+export type SearchKind = 'files' | 'memories';
+
+/** The body of `POST .../search`. Only the validated contract; optional fields are omitted, never sent empty. */
+export interface SearchRequestDto {
+  query: string;
+  types: SearchKind[];
+  collectionIds?: string[];
+  fileIds?: string[];
+  tags?: string[];
+  tagMatch?: 'any' | 'all';
+  memoryTypes?: MemoryType[];
+  includeSuperseded?: boolean;
+  /** Workspace route only. */
+  includeGlobal?: boolean;
+  limit: number;
+  minScore?: number;
+}

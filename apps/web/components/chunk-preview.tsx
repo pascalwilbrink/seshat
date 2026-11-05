@@ -6,6 +6,14 @@ import type { ChunkDto, ChunkPageDto } from '@/lib/api-types';
 import { Button } from '@/components/ui/button';
 
 const PAGE_SIZE = 10;
+/** Upper bound of pages read automatically while looking for a cited chunk. */
+const MAX_FOCUS_PAGES = 100;
+
+/** A chunk to show: by id, or by ordinal when only that is known. */
+export interface ChunkFocus {
+  chunkId: string | null;
+  ordinal: number | null;
+}
 const NETWORK = 'Could not reach the server. Check your connection and try again.';
 
 type State =
@@ -31,9 +39,10 @@ function describe(c: ChunkDto): string {
  * Paged preview of a file's extracted chunks. Content is untrusted: it is rendered only as text nodes (inside `<pre>`),
  * never as Markdown or HTML, and is never logged. `reloadKey` restarts the preview when the file is re-indexed.
  */
-export function ChunkPreview({ base, fileId, reloadKey }: { base: string; fileId: string; reloadKey: string }) {
+export function ChunkPreview({ base, fileId, reloadKey, focus = null }: { base: string; fileId: string; reloadKey: string; focus?: ChunkFocus | null }) {
   const [state, setState] = useState<State>({ status: 'loading' });
   const latest = useRef(0);
+  const pages = useRef(0);
   const alive = useRef(true);
   useEffect(() => {
     alive.current = true;
@@ -52,6 +61,7 @@ export function ChunkPreview({ base, fileId, reloadKey }: { base: string; fileId
     const id = ++latest.current;
     const current = () => alive.current && id === latest.current;
     setState({ status: 'loading' });
+    pages.current = 1;
     try {
       const res = await apiFetch(url(null));
       if (!current()) return;
@@ -77,6 +87,7 @@ export function ChunkPreview({ base, fileId, reloadKey }: { base: string; fileId
     if (state.status !== 'ready' || !state.nextCursor || state.more.pending) return;
     const id = latest.current;
     const cursor = state.nextCursor;
+    pages.current++;
     setState({ ...state, more: { pending: true, error: null } });
     const fail = (error: string) => setState((s) => (s.status === 'ready' ? { ...s, more: { pending: false, error } } : s));
     try {
@@ -94,6 +105,22 @@ export function ChunkPreview({ base, fileId, reloadKey }: { base: string; fileId
       if (alive.current && id === latest.current) fail(NETWORK);
     }
   }
+
+  const isTarget = (c: ChunkDto) => (focus?.chunkId ? c.id === focus.chunkId : focus?.ordinal != null && c.ordinal === focus.ordinal);
+  const items = state.status === 'ready' ? state.items : [];
+  const target = focus ? items.find(isTarget) : undefined;
+  const lastOrdinal = items.length > 0 ? items[items.length - 1]!.ordinal : -1;
+  const searching = Boolean(focus && state.status === 'ready' && !target && state.nextCursor && !state.more.pending && !state.more.error && pages.current < MAX_FOCUS_PAGES && (focus.ordinal == null || lastOrdinal < focus.ordinal));
+  const missing = Boolean(focus && state.status === 'ready' && !target && !searching && !(state.nextCursor && state.more.pending));
+
+  // Keep reading pages until the cited chunk is loaded (bounded by its ordinal and a page cap).
+  useEffect(() => {
+    if (searching) void loadMore();
+  });
+  const targetId = target?.id;
+  useEffect(() => {
+    if (targetId) document.getElementById(`chunk-${targetId}`)?.scrollIntoView?.({ block: 'center' });
+  }, [targetId]);
 
   return (
     <section aria-labelledby={`chunks-title-${fileId}`} className="my-4">
@@ -114,13 +141,19 @@ export function ChunkPreview({ base, fileId, reloadKey }: { base: string; fileId
         </div>
       )}
       {state.status === 'ready' && state.items.length === 0 && <p className="text-muted-foreground">No content has been indexed for this file yet.</p>}
+      {missing && (
+        <p role="status" className="mb-2 text-sm text-muted-foreground">
+          The cited chunk is no longer available. The file may have been re-indexed.
+        </p>
+      )}
       {state.status === 'ready' && state.items.length > 0 && (
         <>
           <ol className="m-0 flex list-none flex-col gap-3 p-0">
             {state.items.map((c) => (
-              <li key={c.id} className="min-w-0 rounded-md border border-border p-3">
+              <li key={c.id} id={`chunk-${c.id}`} aria-current={target?.id === c.id ? 'true' : undefined} className={target?.id === c.id ? 'min-w-0 rounded-md border-2 border-primary p-3' : 'min-w-0 rounded-md border border-border p-3'}>
                 <p className="mb-1 text-sm text-muted-foreground break-words">
                   <span className="font-mono">#{c.ordinal + 1}</span> · {describe(c)}
+                  {target?.id === c.id && <strong className="ml-2 text-foreground">Cited chunk</strong>}
                 </p>
                 <pre className="m-0 max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono text-sm">{c.content}</pre>
               </li>

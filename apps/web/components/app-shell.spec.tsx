@@ -39,12 +39,13 @@ async function openScope(user = userEvent.setup()) {
 }
 
 describe('navigation', () => {
-  it('shows Overview, Memories and Settings, grouped, in Global', () => {
+  it('shows Overview, Search, Memories and Settings, grouped, in Global', () => {
     withWorkspaces();
     render(<AppShell username="admin">x</AppShell>);
     const nav = screen.getByRole('navigation', { name: 'Sections' });
     expect(within(nav).getAllByRole('link').map((l) => [l.textContent, l.getAttribute('href')])).toEqual([
       ['Overview', '/global/overview'],
+      ['Search', '/global/search'],
       ['Memories', '/global/memories'],
       ['Settings', '/global/settings'],
     ]);

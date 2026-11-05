@@ -53,7 +53,7 @@ function routes(...handlers: Route[]) {
     throw new Error(`Unexpected fetch ${url}`);
   });
 }
-const renderGlobal = () => render(<WorkspacesProvider><MemoriesView scope={{ kind: 'global' }} /></WorkspacesProvider>);
+const renderGlobal = (focusMemoryId: string | null = null) => render(<WorkspacesProvider><MemoriesView scope={{ kind: 'global' }} focusMemoryId={focusMemoryId} /></WorkspacesProvider>);
 const urls = () => fetchMock.mock.calls.map((c) => String(c[0]));
 
 describe('MemoriesView', () => {
@@ -264,5 +264,26 @@ describe('Memory detail', () => {
     ok = true;
     await user.click(screen.getByRole('button', { name: 'Retry' }));
     expect(await screen.findByText('Content')).toBeInTheDocument();
+  });
+});
+
+describe('MemoriesView search link bridge', () => {
+  it('opens the cited Memory by id in the link scope even when it is not on the list page', async () => {
+    routes(
+      (u) => (u === '/api/global/memories/cited' ? json(mem({ id: 'cited', title: 'Cited memory', content: 'Found via search' })) : undefined),
+      (u) => (u.startsWith('/api/global/memories?') ? page([mem()]) : undefined),
+    );
+    renderGlobal('cited');
+    expect(await screen.findByText('Found via search')).toBeInTheDocument();
+    expect(urls()).toContain('/api/global/memories/cited');
+  });
+
+  it('shows a missing state for a Memory that no longer exists', async () => {
+    routes(
+      (u) => (u === '/api/global/memories/gone' ? json({ message: 'nf' }, 404) : undefined),
+      (u) => (u.startsWith('/api/global/memories?') ? page([mem()]) : undefined),
+    );
+    renderGlobal('gone');
+    expect(await screen.findByText('This Memory no longer exists.')).toBeInTheDocument();
   });
 });

@@ -11,6 +11,7 @@ import { json, ws } from './shell.fixture';
 import type { ChunkDto, FileDto } from '@/lib/api-types';
 import { handleUnauthorized } from '@/lib/api-client';
 import type { Scope } from '@/lib/scope';
+import type { FileFocus } from '@/lib/search';
 
 const fetchMock = vi.fn();
 
@@ -162,10 +163,10 @@ const G = '/api/global';
 const A = '/api/workspaces/uuid-1';
 const B = '/api/workspaces/uuid-2';
 
-function renderView(scope: Scope) {
+function renderView(scope: Scope, focus: FileFocus | null = null) {
   const ui = (s: Scope) => (
     <WorkspacesProvider>
-      <FilesView scope={s} />
+      <FilesView scope={s} focus={focus} />
     </WorkspacesProvider>
   );
   const r = render(ui(scope));
@@ -667,5 +668,52 @@ describe('FilesView chunk preview', () => {
     await new Promise((r) => setTimeout(r, 20));
     expect(screen.queryByText('secret global text')).not.toBeInTheDocument();
     expect(screen.queryByText('Content preview')).not.toBeInTheDocument();
+  });
+});
+
+describe('FilesView search link bridge', () => {
+  const many = (n: number) => Array.from({ length: n }, (_, i) => chunk(i, `part ${i}`, { startLine: i + 1, endLine: i + 1 }));
+
+  it('opens the cited file even when it is not on the loaded page, and marks the cited chunk', async () => {
+    const files = [file({ id: 'other', name: 'other.md' }), file({ id: 'f1', name: 'cited.md', ingestionStatus: 'indexed', chunkCount: 35 })];
+    const srv = server({ [G]: files }, { pageSize: 1, chunks: { f1: many(35) } });
+    renderView({ kind: 'global' }, { fileId: 'f1', chunkId: 'c23', ordinal: 23 });
+    expect(await screen.findByRole('heading', { name: 'File details' })).toBeInTheDocument();
+    expect(srv.seen).toContain(`GET ${G}/files/f1`);
+    // Pages are read until the cited chunk is loaded; it is marked and the others are not.
+    const cited = (await screen.findByText('part 23')).closest('li')!;
+    expect(cited).toHaveAttribute('aria-current', 'true');
+    expect(within(cited).getByText('Cited chunk')).toBeInTheDocument();
+    expect(screen.queryByText('part 34')).not.toBeInTheDocument();
+    expect(document.querySelectorAll('[aria-current="true"]')).toHaveLength(1);
+  });
+
+  it('uses the scope of the link: a Workspace page reads the file from that Workspace only', async () => {
+    const srv = server({ [A]: [file({ id: 'f1', name: 'ws.md', ingestionStatus: 'indexed' })] }, { chunks: { f1: many(2) } });
+    renderView({ kind: 'workspace', slug: 'alpha' }, { fileId: 'f1', chunkId: 'c1', ordinal: 1 });
+    expect(await screen.findByText('part 1')).toBeInTheDocument();
+    expect(srv.seen.filter((x) => x.includes('/files/f1'))).not.toContain(`GET ${G}/files/f1`);
+    expect(srv.seen).toContain(`GET ${A}/files/f1`);
+  });
+
+  it('says so when the cited chunk no longer exists, and when the file is gone', async () => {
+    server({ [G]: [file({ id: 'f1', ingestionStatus: 'indexed' })] }, { chunks: { f1: many(3) } });
+    const first = renderView({ kind: 'global' }, { fileId: 'f1', chunkId: 'gone', ordinal: 1 });
+    expect(await screen.findByText(/cited chunk is no longer available/)).toBeInTheDocument();
+    first.unmount();
+    fetchMock.mockReset();
+    server({ [G]: [] });
+    renderView({ kind: 'global' }, { fileId: 'nope', chunkId: null, ordinal: null });
+    expect(await screen.findByText(/no longer exists or is not available here/)).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'File details' })).not.toBeInTheDocument();
+  });
+
+  it('does not mark chunks of another file opened from the list', async () => {
+    server({ [G]: [file({ id: 'f1', ingestionStatus: 'indexed' }), file({ id: 'f2', name: 'two.md', ingestionStatus: 'indexed' })] }, { chunks: { f1: many(2), f2: many(2) } });
+    renderView({ kind: 'global' }, { fileId: 'f1', chunkId: 'c1', ordinal: 1 });
+    await screen.findByText('Cited chunk');
+    await screen.findAllByText('two.md');
+    await userEvent.click(screen.getAllByRole('button', { name: /Details/ })[1]!);
+    await waitFor(() => expect(screen.queryByText('Cited chunk')).not.toBeInTheDocument());
   });
 });

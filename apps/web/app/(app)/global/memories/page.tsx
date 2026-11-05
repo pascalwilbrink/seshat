@@ -1,5 +1,6 @@
 import { MemoriesView } from '@/components/memories-view';
+import { parseMemoryFocus } from '@/lib/search';
 
-export default function Page() {
-  return <MemoriesView scope={{ kind: 'global' }} />;
+export default async function Page({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  return <MemoriesView scope={{ kind: 'global' }} focusMemoryId={parseMemoryFocus(await searchParams)} />;
 }
