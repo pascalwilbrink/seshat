@@ -28,6 +28,10 @@ import { ConfigModule } from '../src/config/config.module.js';
 import { FileRecord } from '../src/files/file.entity.js';
 import { FilesController } from '../src/files/files.controller.js';
 import { FilesService } from '../src/files/files.service.js';
+import { ChunksService } from '../src/ingestion/chunks.service.js';
+import { IngestionController } from '../src/ingestion/ingestion.controller.js';
+import { ReindexService } from '../src/ingestion/reindex.service.js';
+import { QueueService } from '../src/queue/index.js';
 import { FILE_STORAGE, type FileStorage, originalObjectKey } from '../src/storage/file-storage.js';
 import { LocalVolumeFileStorage } from '../src/storage/local-volume-file-storage.js';
 import { StorageCleanupIntent } from '../src/storage/storage-cleanup-intent.entity.js';
@@ -102,6 +106,8 @@ describeIntegration('Files, Collections and Tags: endpoint-wide scope isolation 
   let wsA: string;
   let wsB: string;
   const events: string[] = [];
+  const queued: string[] = [];
+  const queue = { enqueue: async (id: string) => (queued.push(id), 'queued' as const) };
   const logged: string[] = [];
   /** Every response body and header block seen by the suite; scanned for leaks at the end. */
   const seen: string[] = [];
@@ -181,7 +187,7 @@ describeIntegration('Files, Collections and Tags: endpoint-wide scope isolation 
     const q = async (t: string) => ds.query(`SELECT * FROM ${t} ORDER BY 1, 2`);
     return JSON.stringify({
       files: await q('files'), collections: await q('collections'), tags: await q('tags'), file_tags: await q('file_tags'),
-      intents: await q('storage_cleanup_intents'), objects: await objects(), storage: storage.calls, events: [...events],
+      intents: await q('storage_cleanup_intents'), objects: await objects(), storage: storage.calls, events: [...events], queued: [...queued],
     });
   }
 
@@ -228,7 +234,7 @@ describeIntegration('Files, Collections and Tags: endpoint-wide scope isolation 
     for (const [k, v] of Object.entries({ DATABASE_URL: 'postgres://u:p@localhost:5432/db', ...TEST_ADMIN_ENV, NODE_ENV: 'test', MAX_UPLOAD_BYTES: '1024' })) vi.stubEnv(k, v);
     @Module({
       imports: [ConfigModule, EventEmitterModule.forRoot()],
-      controllers: [FilesController, CollectionsController, TagsController, WorkspacesController],
+      controllers: [FilesController, IngestionController, CollectionsController, TagsController, WorkspacesController],
       providers: [
         { provide: CLOCK, useValue: systemClock },
         AuthService,
@@ -247,6 +253,9 @@ describeIntegration('Files, Collections and Tags: endpoint-wide scope isolation 
         WorkspaceDataCleanup,
         { provide: WORKSPACE_CLEANUP, useExisting: WorkspaceDataCleanup },
         FilesService,
+        ChunksService,
+        ReindexService,
+        { provide: QueueService, useValue: queue },
         WorkspacesService,
       ],
     })
@@ -279,6 +288,7 @@ describeIntegration('Files, Collections and Tags: endpoint-wide scope isolation 
     for (const f of await objects()) await rm(f, { force: true });
     storage.reset();
     events.length = 0;
+    queued.length = 0;
   });
 
   /** Seeds both Workspaces and Global and returns the byte-for-byte reference for "not found". */
@@ -296,10 +306,10 @@ describeIntegration('Files, Collections and Tags: endpoint-wide scope isolation 
     expect(catalogMismatches()).toEqual([]);
     expect(SCOPED_ENDPOINTS.map((e) => e.action).sort()).toEqual([
       'collection.create', 'collection.delete', 'collection.get', 'collection.list', 'collection.update',
-      'file.delete', 'file.download', 'file.get', 'file.list', 'file.update', 'file.upload',
+      'file.chunks', 'file.delete', 'file.download', 'file.get', 'file.list', 'file.reindex', 'file.update', 'file.upload',
       'tag.delete', 'tag.list', 'tag.rename',
     ]);
-    expect(expectedRouteStrings()).toHaveLength(28);
+    expect(expectedRouteStrings()).toHaveLength(34);
   });
 
   it('no route is served without credentials, for every endpoint in Global and in a Workspace', async () => {

@@ -15,6 +15,12 @@ export interface FileDto {
   collectionId: string | null;
   tags: string[];
   ingestionStatus: IngestionStatus;
+  /** Allowlisted, fixed failure text of the last ingestion (never a raw provider or driver message); null otherwise. */
+  ingestionError: string | null;
+  /** When the file last reached `indexed`; null until then. */
+  indexedAt: string | null;
+  /** Number of chunks stored for the file. */
+  chunkCount: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -30,6 +36,9 @@ export interface FileRow {
   sha256: string;
   collection_id: string | null;
   ingestion_status: IngestionStatus;
+  ingestion_error: string | null;
+  indexed_at: Date | string | null;
+  chunk_count: number | string;
   created_at: Date | string;
   updated_at: Date | string;
 }
@@ -47,6 +56,9 @@ export function toFileDto(r: FileRow, tags: string[]): FileDto {
     collectionId: r.collection_id,
     tags,
     ingestionStatus: r.ingestion_status,
+    ingestionError: r.ingestion_error ?? null,
+    indexedAt: r.indexed_at ? new Date(r.indexed_at).toISOString() : null,
+    chunkCount: Number(r.chunk_count ?? 0),
     createdAt: new Date(r.created_at).toISOString(),
     updatedAt: new Date(r.updated_at).toISOString(),
   };

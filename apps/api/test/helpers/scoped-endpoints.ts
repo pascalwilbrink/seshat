@@ -13,7 +13,7 @@ export interface ScopedEndpoint {
   /** Permissions of the requirement. Several entries mean "any of" (shared Tags). */
   needs: readonly Permission[];
   /** Status of a successful call. */
-  ok: 200 | 201 | 204;
+  ok: 200 | 201 | 202 | 204;
   kind: 'read' | 'write';
 }
 
@@ -24,6 +24,8 @@ export const SCOPED_ENDPOINTS: readonly ScopedEndpoint[] = [
   { action: 'file.download', method: 'GET', path: 'files/:fileId/download', needs: ['files:read'], ok: 200, kind: 'read' },
   { action: 'file.update', method: 'PUT', path: 'files/:fileId', needs: ['files:write'], ok: 200, kind: 'write' },
   { action: 'file.delete', method: 'DELETE', path: 'files/:fileId', needs: ['files:delete'], ok: 204, kind: 'write' },
+  { action: 'file.reindex', method: 'POST', path: 'files/:fileId/reindex', needs: ['files:write'], ok: 202, kind: 'write' },
+  { action: 'file.chunks', method: 'GET', path: 'files/:fileId/chunks', needs: ['files:read'], ok: 200, kind: 'read' },
   { action: 'collection.list', method: 'GET', path: 'collections', needs: ['collections:read'], ok: 200, kind: 'read' },
   { action: 'collection.create', method: 'POST', path: 'collections', needs: ['collections:write'], ok: 201, kind: 'write' },
   { action: 'collection.get', method: 'GET', path: 'collections/:collectionId', needs: ['collections:read'], ok: 200, kind: 'read' },
@@ -34,9 +36,12 @@ export const SCOPED_ENDPOINTS: readonly ScopedEndpoint[] = [
   { action: 'tag.delete', method: 'DELETE', path: 'tags/:tagId', needs: ['files:write', 'memories:write'], ok: 204, kind: 'write' },
 ];
 
+/** Admin-only scope-wide operations: no resource id and no key permission (keys are always refused). */
+export const SCOPE_ADMIN_ENDPOINTS = [{ action: 'fileIndex:reindexScope', method: 'POST', path: 'files/reindex', ok: 202 }] as const;
+
 /** The Express route strings (`METHOD /api/...`) this table stands for, in Global and in a Workspace. */
 export function expectedRouteStrings(): string[] {
-  return SCOPED_ENDPOINTS.flatMap((e) => [`${e.method} /api/global/${e.path}`, `${e.method} /api/workspaces/:workspaceId/${e.path}`]).sort();
+  return [...SCOPED_ENDPOINTS, ...SCOPE_ADMIN_ENDPOINTS].flatMap((e) => [`${e.method} /api/global/${e.path}`, `${e.method} /api/workspaces/:workspaceId/${e.path}`]).sort();
 }
 
 /** The table must agree with the shared action catalog, which the authorization service enforces. */

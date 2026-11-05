@@ -259,7 +259,7 @@ describeIntegration('File upload (real PostgreSQL and storage)', () => {
     for (const [p, scope, workspaceId] of [[g, 'global', null], [w(wsA), 'workspace', wsA]] as const) {
       const res = await upload(p, [file(data, { filename: 'Report.PDF', type: 'Application/PDF' })]);
       expect(res.status).toBe(201);
-      expect(Object.keys(res.json).sort()).toEqual(['collectionId', 'createdAt', 'extension', 'id', 'ingestionStatus', 'mimeType', 'name', 'scope', 'sha256', 'sizeBytes', 'tags', 'updatedAt', 'workspaceId']);
+      expect(Object.keys(res.json).sort()).toEqual(['chunkCount', 'collectionId', 'createdAt', 'extension', 'id', 'indexedAt', 'ingestionError', 'ingestionStatus', 'mimeType', 'name', 'scope', 'sha256', 'sizeBytes', 'tags', 'updatedAt', 'workspaceId']);
       expect(res.json).toMatchObject({ scope, workspaceId, name: 'Report.PDF', extension: 'pdf', mimeType: 'application/pdf', sizeBytes: LIMIT, sha256: sha, collectionId: null, tags: [], ingestionStatus: 'pending' });
       expect(res.text).not.toMatch(/originals|storage|\/tmp/i);
       const [row] = await ds.query('SELECT storage_key FROM files WHERE id = $1', [res.json.id]);
