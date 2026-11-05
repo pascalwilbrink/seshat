@@ -59,17 +59,12 @@ describeIntegration('API keys (real PostgreSQL)', () => {
     it('down drops the table, up recreates it (reversible)', async () => {
       const names = ds.migrations.map((m) => m.constructor.name);
       // Newer migrations (files, Collections, Tags, cleanup ledger, chunks) sit on top of it: revert them first.
-      expect(names.at(-6)).toBe('CreateApiKeys1762500000000');
-      await ds.undoLastMigration({ transaction: 'each' });
-      await ds.undoLastMigration({ transaction: 'each' });
-      await ds.undoLastMigration({ transaction: 'each' });
-      await ds.undoLastMigration({ transaction: 'each' });
-      await ds.undoLastMigration({ transaction: 'each' });
-      await ds.undoLastMigration({ transaction: 'each' });
+      expect(names.at(-7)).toBe('CreateApiKeys1762500000000');
+      for (let i = 0; i < 7; i += 1) await ds.undoLastMigration({ transaction: 'each' });
       expect(await ds.query(`SELECT to_regclass('"${iso.schema}".api_keys') AS t`)).toEqual([{ t: null }]);
       expect(await ds.query(`SELECT to_regclass('"${iso.schema}".workspaces') AS t`)).not.toEqual([{ t: null }]);
       const again = await ds.runMigrations({ transaction: 'each' });
-      expect(again.map((m) => m.name)).toEqual(['CreateApiKeys1762500000000', 'CreateFilesCollectionsTags1762600000000', 'CreateStorageCleanupIntents1762700000000', 'CreateChunks1762800000000', 'CreateMemories1762900000000', 'AddMemoryEmbeddingGeneration1763000000000']);
+      expect(again.map((m) => m.name)).toEqual(['CreateApiKeys1762500000000', 'CreateFilesCollectionsTags1762600000000', 'CreateStorageCleanupIntents1762700000000', 'CreateChunks1762800000000', 'CreateMemories1762900000000', 'AddMemoryEmbeddingGeneration1763000000000', 'AddKeywordSearchVectors1763100000000']);
       expect(await ds.runMigrations({ transaction: 'each' })).toEqual([]);
     });
   });
