@@ -252,7 +252,8 @@ export class MemoriesService {
     if (!created.deduplicated && this.embeddings) {
       const vector = await this.embeddings.embedAfterCommit({ scopeKey, id: dto.id, generation: created.generation, title: input.title ?? null, content: input.content });
       dto = await this.load(this.dataSource.manager, scopeKey, dto.id).catch(() => dto);
-      if (vector) hints = await this.embeddings.hints(scopeKey, dto.id, vector).catch(() => []);
+      // Previews are content of other Memories: only a caller that may read this scope's Memories gets them.
+      if (vector && this.authorization.can(principal, 'memory.list', scope)) hints = await this.embeddings.hints(scopeKey, dto.id, vector).catch(() => []);
     }
     return { ...dto, deduplicated: created.deduplicated, hints };
   }
