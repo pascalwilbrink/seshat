@@ -7,6 +7,7 @@
     "test": "pnpm -r test && pnpm test:docker",
     "test:docker": "node --test docker/test/*.spec.mjs",
     "dev": "pnpm -r --parallel dev",
-    "test:container": "node docker/verify-image.mjs"
+    "test:container": "node docker/verify-image.mjs",
+    "test:compose": "node docker/verify-compose.mjs"
   }
 }

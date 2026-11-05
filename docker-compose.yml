@@ -1,14 +1,48 @@
-# Development database: Postgres with the pgvector extension.
+# `docker compose up -d db` starts only the development database (unchanged workflow).
+# `docker compose --profile app up -d --build` also builds and runs Seshat (API on 4200, web UI on 3000).
+# The app reads its secrets from the root `.env` (copy `.env.example`); it is Git-ignored and never baked into the image.
+# Requires Docker Compose 2.24 or newer (optional env_file). Do not print `docker compose config`: it expands secrets.
 services:
   db:
     image: pgvector/pgvector:pg17
     environment:
-      POSTGRES_USER: seshat
-      POSTGRES_PASSWORD: seshat
-      POSTGRES_DB: seshat
+      POSTGRES_USER: ${POSTGRES_USER:-seshat}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-seshat}
+      POSTGRES_DB: ${POSTGRES_DB:-seshat}
     ports:
-      - '5432:5432'
+      # Loopback only, so a non-default password is not exposed on the network. DB_HOST_PORT is for port clashes.
+      - '127.0.0.1:${DB_HOST_PORT:-5432}:5432'
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  app:
+    profiles: ['app']
+    build:
+      context: .
+    image: seshat:local
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      # Always the Compose database host, never localhost. Overrides DATABASE_URL from .env. The password is placed
+      # in the URL as is: use URL-safe characters (e.g. `openssl rand -hex 24`).
+      DATABASE_URL: postgres://${POSTGRES_USER:-seshat}:${POSTGRES_PASSWORD:-seshat}@db:5432/${POSTGRES_DB:-seshat}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - '${SESHAT_WEB_PORT:-3000}:3000'
+      - '${SESHAT_API_PORT:-4200}:4200'
+    volumes:
+      - files:/data/files
+    restart: unless-stopped
+
 volumes:
   pgdata:
+  files:
