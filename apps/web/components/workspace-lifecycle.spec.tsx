@@ -4,6 +4,9 @@ import { useSyncExternalStore } from 'react';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
+const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
+vi.mock('sonner', () => ({ toast, Toaster: () => null }));
+
 // A tiny in-memory router: pathname is the single source of truth, like the real URL.
 const nav = vi.hoisted(() => {
   let path = '/global/settings';
@@ -98,6 +101,8 @@ beforeEach(() => vi.stubGlobal('fetch', fetchMock));
 afterEach(() => {
   vi.unstubAllGlobals();
   fetchMock.mockReset();
+  toast.success.mockReset();
+  toast.error.mockReset();
 });
 
 describe('Workspace lifecycle through the shell and a same-origin API fixture', () => {
@@ -118,9 +123,11 @@ describe('Workspace lifecycle through the shell and a same-origin API fixture', 
     };
 
     // Empty state, then create.
-    expect(await screen.findByText(/No Workspaces yet\. Create your first/)).toBeInTheDocument();
+    expect(await screen.findByText('No Workspaces yet', { selector: 'p' })).toBeInTheDocument();
     await userEvent.type(screen.getByLabelText('Name'), 'Acme Corp');
     await userEvent.click(screen.getByRole('button', { name: 'Create Workspace' }));
+    expect(await screen.findByRole('heading', { name: 'Acme Corp' })).toBeInTheDocument();
+    expect(toast.success).toHaveBeenCalledWith('Workspace "Acme Corp" created');
 
     // Lands on a valid scoped URL; the switcher already lists it.
     expect(await screen.findByRole('heading', { name: 'Acme Corp' })).toBeInTheDocument();
@@ -143,6 +150,7 @@ describe('Workspace lifecycle through the shell and a same-origin API fixture', 
     await userEvent.type(name, 'Acme Inc');
     await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     expect(await screen.findByRole('status')).toHaveTextContent('Workspace saved');
+    expect(toast.success).toHaveBeenCalledWith('Workspace saved');
     await vi.waitFor(async () => {
       const renamed = await listed('Acme Inc');
       expect(renamed.item).not.toBeNull();
@@ -151,10 +159,14 @@ describe('Workspace lifecycle through the shell and a same-origin API fixture', 
     expect(nav.path).toBe('/w/acme-corp/settings');
 
     // Delete needs the exact slug; the active Workspace disappears and we land in Global.
-    await userEvent.type(screen.getByLabelText(/Type the slug "acme-corp"/), 'acme-corp');
     await userEvent.click(screen.getByRole('button', { name: 'Delete Workspace' }));
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.type(within(dialog).getByLabelText(/Type acme-corp to confirm/), 'acme-corp');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Delete Workspace' }));
     expect(await screen.findByRole('heading', { name: 'Global' })).toBeInTheDocument();
     expect(nav.path).toBe('/global/overview');
+    expect(toast.success).toHaveBeenCalledWith('Workspace deleted');
+    expect(toast.error).not.toHaveBeenCalled();
     await vi.waitFor(async () => {
       const gone = await listed('Acme Inc');
       expect(gone.item).toBeNull();
