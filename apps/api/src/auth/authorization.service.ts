@@ -12,6 +12,12 @@ import {
 import type { ScopeRef } from '../scopes/scope-ref.js';
 import { isUuid } from '../scopes/scope-ref.js';
 import type { ApiKeyPrincipal, Principal } from './principal.js';
+import { globalScope } from '../scopes/scope-ref.js';
+import { SEARCH_TYPES, type AuthorizedSearchPlan, type SearchAuthorizationRequest, type SearchType } from '../search/search-plan.js';
+
+/** Canonical order of the permissions named in a search denial. */
+const SEARCH_PERMISSION_ORDER: readonly Permission[] = ['search', 'files:read', 'memories:read', 'global:read'];
+const SEARCH_TYPE_PERMISSION = { files: 'files:read', memories: 'memories:read' } as const satisfies Record<(typeof SEARCH_TYPES)[number], Permission>;
 
 // The action catalog lives in the shared domain package so the guard, this policy and the UI agree.
 export { ACTIONS };
@@ -84,6 +90,52 @@ export class AuthorizationService {
     if (decision.reason === 'hidden') throw new NotFoundException('Not Found');
     if (decision.missing?.length) throw new ForbiddenException(`Missing permission: ${decision.missing.join(', ')}`);
     throw new ForbiddenException('Forbidden');
+  }
+
+  /**
+   * Authorizes a search and returns the typed plan every retrieval branch must use. The route scope goes through the
+   * same policy as every other action (`search.query`: a foreign Workspace is the generic 404, decided before anything
+   * else). Then each requested part adds a requirement that is ALL-of, never any-of: `files:read` for `files`,
+   * `memories:read` for `memories`, `global:read` for the Global route or `includeGlobal`. Missing grants give one 403
+   * naming every missing permission. The catalog's any-of families and concealed Global stay as they are for their own
+   * routes; they are not consulted here, so a search never conceals a missing grant behind a 404.
+   * `includeGlobal` is honoured only on a Workspace route and only when requested: a grant alone never adds Global.
+   */
+  authorizeSearch(principal: Principal, scope: ScopeRef, request: SearchAuthorizationRequest): AuthorizedSearchPlan {
+    const requested: SearchType[] = Array.isArray(request?.types) ? [...new Set(request.types)] : [];
+    const validTypes = requested.length > 0 && requested.every((t) => (SEARCH_TYPES as readonly string[]).includes(t));
+    if (!validTypes) throw new ForbiddenException('Forbidden'); // fail closed: never an empty or unknown type set
+    const inWorkspace = scope?.kind === 'workspace';
+    const wantsGlobal = inWorkspace && request.includeGlobal === true;
+
+    const missing = new Set<Permission>();
+    if (!this.can(principal, 'search.query', scope)) {
+      const decision = this.decide(principal, 'search.query', scope);
+      if (decision.allow) throw new (inWorkspace ? NotFoundException : ForbiddenException)(inWorkspace ? 'Not Found' : 'Forbidden');
+      if (decision.reason === 'hidden') throw new NotFoundException('Not Found');
+      if (!decision.missing?.length) throw new ForbiddenException('Forbidden');
+      for (const p of decision.missing) missing.add(p);
+    }
+
+    const key = (principal as { kind?: unknown } | null | undefined)?.kind === 'apiKey' ? asApiKeyPrincipal(principal) : null;
+    if (key) {
+      const held = new Set<Permission>(key.permissions);
+      for (const t of requested) if (!held.has(SEARCH_TYPE_PERMISSION[t])) missing.add(SEARCH_TYPE_PERMISSION[t]);
+      if (wantsGlobal && !held.has(GLOBAL_READ_PERMISSION)) missing.add(GLOBAL_READ_PERMISSION);
+      if (missing.size > 0) {
+        const ordered = SEARCH_PERMISSION_ORDER.filter((p) => missing.has(p));
+        throw new ForbiddenException(`Missing permission: ${ordered.join(', ')}`);
+      }
+    } else if (missing.size > 0) {
+      throw new ForbiddenException('Forbidden');
+    }
+
+    const scopes: ScopeRef[] = [scope];
+    if (wantsGlobal) scopes.push(globalScope());
+    return Object.freeze({
+      scopes: Object.freeze(scopes),
+      types: Object.freeze(SEARCH_TYPES.filter((t) => requested.includes(t))),
+    });
   }
 
   private decide(principal: Principal, action: Action, scope: ScopeRef): Decision {
