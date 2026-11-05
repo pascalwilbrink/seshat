@@ -8,6 +8,10 @@ import { readFormError, type FormError } from '@/lib/form-errors';
 import { GLOBAL_OVERVIEW_PATH, type Scope } from '@/lib/scope';
 import { FormField } from './form-field';
 import { useWorkspaces } from './workspaces-provider';
+import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
+import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 const networkError: FormError = { message: 'Could not reach the server. Check your connection and try again.', fields: {}, status: 0 };
 const sessionError: FormError = { message: 'Your session has expired. Log in again to continue.', fields: {}, status: 401 };
@@ -33,8 +37,8 @@ function WorkspaceCollections({ slug }: { slug: string }) {
   if (state.status === 'loading') {
     return (
       <section aria-busy="true">
-        <h1>Collections</h1>
-        <p role="status" className="muted">
+        <h1 className="mb-4 text-2xl font-semibold tracking-tight break-words">Collections</h1>
+        <p role="status" className="text-muted-foreground">
           Loading…
         </p>
       </section>
@@ -43,11 +47,11 @@ function WorkspaceCollections({ slug }: { slug: string }) {
   if (state.status === 'error') {
     return (
       <section>
-        <h1>Collections</h1>
+        <h1 className="mb-4 text-2xl font-semibold tracking-tight break-words">Collections</h1>
         <p role="alert">Could not load Workspaces.</p>
-        <button type="button" onClick={reload}>
+        <Button type="button" onClick={reload}>
           Retry
-        </button>
+        </Button>
       </section>
     );
   }
@@ -55,9 +59,9 @@ function WorkspaceCollections({ slug }: { slug: string }) {
   if (!workspace) {
     return (
       <section>
-        <h1>Workspace not found</h1>
-        <p className="muted">This Workspace does not exist or is not available to you.</p>
-        <Link href={GLOBAL_OVERVIEW_PATH}>Go to Global Overview</Link>
+        <h1 className="mb-4 text-2xl font-semibold tracking-tight break-words">Workspace not found</h1>
+        <p className="text-muted-foreground">This Workspace does not exist or is not available to you.</p>
+        <Link href={GLOBAL_OVERVIEW_PATH} className="rounded-sm text-primary underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-ring">Go to Global Overview</Link>
       </section>
     );
   }
@@ -119,16 +123,16 @@ function CollectionsPanel({ base, label }: { base: string; label: string }) {
 
   return (
     <section>
-      <p className="scope-label">{label}</p>
-      <h1>Collections</h1>
-      <p className="muted">Collections group files for browsing. They are optional and never grant access.</p>
+      <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+      <h1 className="mb-4 text-2xl font-semibold tracking-tight break-words">Collections</h1>
+      <p className="text-muted-foreground">Collections group files for browsing. They are optional and never grant access.</p>
 
-      <div role="status" className="notice" hidden={!notice}>
+      <div role="status" className="my-3 rounded-md border border-border bg-muted px-3 py-2 text-sm" hidden={!notice}>
         {notice}
       </div>
 
       {mode === 'none' && !editing && (
-        <button
+        <Button
           type="button"
           onClick={() => {
             setMode('create');
@@ -136,7 +140,7 @@ function CollectionsPanel({ base, label }: { base: string; label: string }) {
           }}
         >
           Create Collection
-        </button>
+        </Button>
       )}
       {mode === 'create' && (
         <CollectionForm
@@ -183,9 +187,9 @@ function CollectionsPanel({ base, label }: { base: string; label: string }) {
         />
       )}
 
-      <h2>All Collections</h2>
+      <h2 className="mt-6 mb-2 text-lg font-semibold break-words">All Collections</h2>
       {list.status === 'loading' && (
-        <p role="status" aria-busy="true" className="muted">
+        <p role="status" aria-busy="true" className="text-muted-foreground">
           Loading Collections…
         </p>
       )}
@@ -193,7 +197,7 @@ function CollectionsPanel({ base, label }: { base: string; label: string }) {
         <div>
           <p role="alert">{list.error.message}</p>
           {list.error.status !== 401 && (
-            <button
+            <Button
               type="button"
               onClick={() => {
                 setList({ status: 'loading' });
@@ -201,34 +205,34 @@ function CollectionsPanel({ base, label }: { base: string; label: string }) {
               }}
             >
               Retry
-            </button>
+            </Button>
           )}
         </div>
       )}
       {list.status === 'ready' && list.items.length === 0 && (
-        <p className="muted">No Collections yet. Create one to group related files.</p>
+        <p className="text-muted-foreground">No Collections yet. Create one to group related files.</p>
       )}
       {list.status === 'ready' && list.items.length > 0 && (
-        <table className="keys">
-          <caption className="sr-only">Collections in this scope</caption>
-          <thead>
-            <tr>
-              <th scope="col">Name</th>
-              <th scope="col">Description</th>
-              <th scope="col">Files</th>
-              <th scope="col">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
+        <Table>
+          <TableCaption className="sr-only">Collections in this scope</TableCaption>
+          <TableHeader>
+            <TableRow>
+              <TableHead scope="col">Name</TableHead>
+              <TableHead scope="col">Description</TableHead>
+              <TableHead scope="col">Files</TableHead>
+              <TableHead scope="col">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {list.items.map((c) => (
-              <tr key={c.id}>
-                <th scope="row">{c.name}</th>
-                <td>{c.description ?? <span className="muted">—</span>}</td>
-                <td>{c.fileCount}</td>
-                <td>
-                  <button
+              <TableRow key={c.id}>
+                <TableHead scope="row" className="text-foreground">{c.name}</TableHead>
+                <TableCell>{c.description ?? <span className="text-muted-foreground">—</span>}</TableCell>
+                <TableCell>{c.fileCount}</TableCell>
+                <TableCell>
+                  <Button
                     type="button"
-                    className="link-button"
+                    variant="link" size="sm" className="h-auto px-0"
                     onClick={() => {
                       setEditing(c);
                       setMode('none');
@@ -236,15 +240,15 @@ function CollectionsPanel({ base, label }: { base: string; label: string }) {
                     }}
                   >
                     Rename<span className="sr-only"> {c.name}</span>
-                  </button>{' '}
-                  <button type="button" className="link-button" onClick={() => setDeleting(c)}>
+                  </Button>{' '}
+                  <Button type="button" variant="link" size="sm" className="h-auto px-0" onClick={() => setDeleting(c)}>
                     Delete<span className="sr-only"> {c.name}</span>
-                  </button>
-                </td>
-              </tr>
+                  </Button>
+                </TableCell>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       )}
 
       {deleting && (
@@ -320,26 +324,26 @@ function CollectionForm({
   const fe = { ...(error?.fields ?? {}), ...local };
   const formLevel = error && Object.keys(error.fields).length === 0 ? error.message : null;
   return (
-    <form onSubmit={onSubmit} aria-busy={pending} noValidate className="form" aria-label={title}>
-      <h2>{title}</h2>
+    <form onSubmit={onSubmit} aria-busy={pending} noValidate className="flex max-w-lg flex-col gap-3" aria-label={title}>
+      <h2 className="mt-6 mb-2 text-lg font-semibold break-words">{title}</h2>
       <FormField id="collection-name" label="Name" error={fe.name}>
-        {(p) => <input {...p} type="text" maxLength={100} value={name} onChange={(e) => setName(e.target.value)} disabled={pending} />}
+        {(p) => <Input {...p} type="text" maxLength={100} value={name} onChange={(e) => setName(e.target.value)} disabled={pending} />}
       </FormField>
       <FormField id="collection-description" label="Description (optional)" error={fe.description}>
-        {(p) => <textarea {...p} maxLength={2000} value={description} onChange={(e) => setDescription(e.target.value)} disabled={pending} />}
+        {(p) => <Textarea {...p} maxLength={2000} value={description} onChange={(e) => setDescription(e.target.value)} disabled={pending} />}
       </FormField>
       {formLevel && (
-        <p role="alert" className="field-error">
+        <p role="alert" className="text-sm text-destructive break-words">
           {formLevel}
         </p>
       )}
-      <div>
-        <button type="submit" disabled={pending}>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button type="submit" disabled={pending}>
           {pending ? pendingLabel : submitLabel}
-        </button>{' '}
-        <button type="button" onClick={onCancel} disabled={pending}>
+        </Button>{' '}
+        <Button type="button" onClick={onCancel} disabled={pending}>
           Cancel
-        </button>
+        </Button>
       </div>
     </form>
   );
@@ -391,26 +395,26 @@ function DeleteDialog({
       aria-modal="true"
       aria-labelledby="delete-collection-title"
       aria-describedby="delete-collection-desc"
-      className="dialog"
+      className="fixed inset-0 z-50 m-auto flex h-fit w-[min(28rem,90vw)] flex-col gap-3 rounded-lg border border-border bg-popover p-5 text-popover-foreground"
       onKeyDown={(e) => {
         if (e.key === 'Escape' && !pending) onCancel();
       }}
     >
-      <h2 id="delete-collection-title">Delete “{collection.name}”?</h2>
+      <h2 className="mt-6 mb-2 text-lg font-semibold break-words" id="delete-collection-title">Delete “{collection.name}”?</h2>
       <p id="delete-collection-desc">
         The Collection is removed. Its files are kept and simply no longer belong to a Collection.
       </p>
       {error && (
-        <p role="alert" className="field-error">
+        <p role="alert" className="text-sm text-destructive break-words">
           {error.message}
         </p>
       )}
-      <button type="button" ref={cancelRef} onClick={onCancel} disabled={pending}>
+      <Button type="button" ref={cancelRef} onClick={onCancel} disabled={pending}>
         Cancel
-      </button>{' '}
-      <button type="button" className="danger" onClick={confirm} disabled={pending}>
+      </Button>{' '}
+      <Button type="button" variant="destructive" onClick={confirm} disabled={pending}>
         {pending ? 'Deleting…' : 'Delete Collection'}
-      </button>
+      </Button>
     </div>
   );
 }

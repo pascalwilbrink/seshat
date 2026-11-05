@@ -5,6 +5,11 @@ import type { CollectionDto, FileDto } from '@/lib/api-types';
 import { parseTagInput } from '@/lib/files';
 import { uploadForm } from '@/lib/upload';
 import { formatSize } from '@/lib/files';
+import { Button } from '@/components/ui/button';
+import { Select } from '@/components/ui/select';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { cn } from '@/lib/utils';
 
 type ItemStatus = 'pending' | 'uploading' | 'success' | 'failed';
 interface QueueItem {
@@ -138,30 +143,30 @@ export function FileUploader({
   }
 
   return (
-    <section aria-labelledby="upload-title" className="uploader">
-      <h2 id="upload-title">Upload files</h2>
-      <div className="form">
-        <div className="field">
-          <label htmlFor="upload-collection">Collection (optional)</label>
-          <select id="upload-collection" value={collectionId} onChange={(e) => setCollectionId(e.target.value)}>
+    <section aria-labelledby="upload-title">
+      <h2 className="mt-6 mb-2 text-lg font-semibold break-words" id="upload-title">Upload files</h2>
+      <div className="flex max-w-lg flex-col gap-3">
+        <div className="flex min-w-0 flex-col gap-1">
+          <Label htmlFor="upload-collection">Collection (optional)</Label>
+          <Select id="upload-collection" value={collectionId} onChange={(e) => setCollectionId(e.target.value)}>
             <option value="">No Collection</option>
             {collections.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
-        <div className="field">
-          <label htmlFor="upload-tags">Tags (optional)</label>
-          <input id="upload-tags" type="text" value={tagText} onChange={(e) => setTagText(e.target.value)} aria-describedby="upload-tags-hint" />
-          <p id="upload-tags-hint" className="field-hint muted">
+        <div className="flex min-w-0 flex-col gap-1">
+          <Label htmlFor="upload-tags">Tags (optional)</Label>
+          <Input id="upload-tags" type="text" value={tagText} onChange={(e) => setTagText(e.target.value)} aria-describedby="upload-tags-hint" />
+          <p id="upload-tags-hint" className="m-0 text-sm text-muted-foreground">
             Separate tags with commas. They are created in this scope if they do not exist.
           </p>
         </div>
       </div>
       <div
-        className={`dropzone${dragging ? ' dropzone-active' : ''}`}
+        className={cn('my-3 rounded-md border border-dashed border-border p-4 text-center', dragging && 'border-primary')}
         data-testid="dropzone"
         onDragOver={(e) => {
           e.preventDefault();
@@ -171,9 +176,9 @@ export function FileUploader({
         onDrop={onDrop}
       >
         <p>Drag files here, or</p>
-        <button type="button" onClick={() => inputRef.current?.click()}>
+        <Button type="button" onClick={() => inputRef.current?.click()}>
           Choose files
-        </button>
+        </Button>
         <input
           ref={inputRef}
           type="file"
@@ -191,10 +196,10 @@ export function FileUploader({
         {announce}
       </div>
       {queue.length > 0 && (
-        <ul className="upload-list" aria-label="Uploads">
+        <ul className="flex flex-col gap-1 py-1" aria-label="Uploads">
           {queue.map((i) => (
             <li key={i.id}>
-              <span>{i.file.name}</span> <span className="muted">({formatSize(i.file.size)})</span>{' '}
+              <span>{i.file.name}</span> <span className="text-muted-foreground">({formatSize(i.file.size)})</span>{' '}
               {i.status === 'pending' && <span>Waiting…</span>}
               {i.status === 'uploading' && (
                 <progress aria-label={`Uploading ${i.file.name}`} value={i.loaded} max={i.file.size || 1}>
@@ -204,12 +209,12 @@ export function FileUploader({
               {i.status === 'success' && <span>Uploaded</span>}
               {i.status === 'failed' && (
                 <>
-                  <span role="alert" className="field-error">
+                  <span role="alert" className="text-sm text-destructive break-words">
                     {i.error}
                   </span>{' '}
-                  <button type="button" onClick={() => retry(i.id)}>
+                  <Button type="button" onClick={() => retry(i.id)}>
                     Retry<span className="sr-only"> {i.file.name}</span>
-                  </button>
+                  </Button>
                 </>
               )}
             </li>
