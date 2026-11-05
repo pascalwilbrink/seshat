@@ -10,7 +10,7 @@ const shared = {
   oxc: { decorator: { legacy: true } },
   test: {
     // Safe test-only admin credentials so config loading works without a .env file.
-    env: { ...TEST_ADMIN_ENV },
+    env: { ...TEST_ADMIN_ENV, OPENAI_API_KEY: 'test-only-openai-key-not-real' },
   },
 };
 
