@@ -28,3 +28,8 @@ export function formatDate(iso: string): string {
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 16).replace('T', ' ') + ' UTC';
 }
+
+/** Table text for the 30-day access count; absent (not an admin list) shows nothing. */
+export function formatAccessCount(n: number | undefined): string {
+  return n === undefined ? '' : n.toLocaleString('en');
+}

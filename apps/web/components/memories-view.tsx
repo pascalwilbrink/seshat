@@ -14,13 +14,14 @@ import {
   type TagDto,
   type WorkspaceDto,
 } from '@/lib/api-types';
-import { formatDate } from '@/lib/files';
+import { formatAccessCount, formatDate } from '@/lib/files';
 import { readFormError } from '@/lib/form-errors';
 import { GLOBAL_OVERVIEW_PATH, type Scope } from '@/lib/scope';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
+import { LastAccessed } from './resource-usage';
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { EmbeddingBadge, MemoryStatusBadge, TypeBadge, provenanceText } from './memory-badges';
 import { MemoryDetail } from './memory-detail';
@@ -337,6 +338,8 @@ function MemoriesPanel({ base, label, focusMemoryId }: { base: string; label: st
                 <TableHead scope="col">Created by</TableHead>
                 <TableHead scope="col">Embedding</TableHead>
                 <TableHead scope="col">Updated</TableHead>
+                <TableHead scope="col">Accesses (30 d)</TableHead>
+                <TableHead scope="col">Last accessed</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -361,6 +364,8 @@ function MemoriesPanel({ base, label, focusMemoryId }: { base: string; label: st
                     <EmbeddingBadge status={m.embeddingStatus} />
                   </TableCell>
                   <TableCell>{formatDate(m.updatedAt)}</TableCell>
+                  <TableCell className="tabular-nums">{formatAccessCount(m.accessCount30d)}</TableCell>
+                  <TableCell><LastAccessed value={m.lastAccessedAt} /></TableCell>
                 </TableRow>
               ))}
             </TableBody>

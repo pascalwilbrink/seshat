@@ -8,6 +8,7 @@ import { readFormError } from '@/lib/form-errors';
 import { formatDate } from '@/lib/files';
 import { ChunkPreview, type ChunkFocus } from './chunk-preview';
 import { FormField } from './form-field';
+import { ResourceUsage } from './resource-usage';
 import { ReindexButton } from './reindex-button';
 import { StatusBadge } from './status-badge';
 import { Button } from '@/components/ui/button';
@@ -121,6 +122,7 @@ export function FileDetail({
           {file.ingestionError ?? 'Indexing failed.'}
         </p>
       )}
+      <ResourceUsage key={file.id} base={base} id={file.id} />
       <div className="my-2">
         <ReindexButton base={base} file={file} onQueued={onReindexed} />
       </div>

@@ -71,6 +71,9 @@ export interface FileDto {
     createdBy: { kind: 'admin' | 'api_key'; keyId: string | null; keyName: string | null } | null;
     client: { name: string; version: string | null } | null;
   };
+  /** Admin list responses only: accesses in the last 30 UTC days, and the last access ever (null if never accessed). */
+  accessCount30d?: number;
+  lastAccessedAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -147,6 +150,9 @@ export interface MemoryDto {
   };
   embeddingStatus: MemoryEmbeddingStatus;
   embeddingModel: string | null;
+  /** Admin list responses only: accesses in the last 30 UTC days, and the last access ever (null if never accessed). */
+  accessCount30d?: number;
+  lastAccessedAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -226,4 +232,19 @@ export interface SearchRequestDto {
   includeGlobal?: boolean;
   limit: number;
   minScore?: number;
+}
+
+export type UsageChannel = 'ui' | 'api' | 'mcp';
+export type UsageAccessKind = 'read' | 'retrieved';
+
+/** `GET .../files/:id/usage` and `.../memories/:id/usage`: counts only, never names or content. */
+export interface ResourceUsageDto {
+  resource: 'file' | 'memory';
+  id: string;
+  scope: 'global' | 'workspace';
+  workspaceId: string | null;
+  window: { days: number; from: string; to: string };
+  lifetime: { total: number; byChannel: Record<UsageChannel, number>; byKind: Record<UsageAccessKind, number> };
+  lastAccessedAt: string | null;
+  daily: { day: string; total: number; byChannel: Record<UsageChannel, number>; byKind: Record<UsageAccessKind, number> }[];
 }

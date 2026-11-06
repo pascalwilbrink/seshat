@@ -71,6 +71,19 @@ describe('MemoriesView', () => {
     expect(urls()).toContain('/api/global/memories?status=active');
   });
 
+  it('shows 30-day access counts and last access, with zero and never states', async () => {
+    routes((u) => (u.startsWith('/api/global/memories?') ? page([mem({ id: 'a', title: 'Used', accessCount30d: 12, lastAccessedAt: '2026-11-06T09:00:00.000Z' }), mem({ id: 'b', title: 'Idle', accessCount30d: 0, lastAccessedAt: null })]) : undefined));
+    renderGlobal();
+    expect(await screen.findByRole('columnheader', { name: 'Accesses (30 d)' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Last accessed' })).toBeInTheDocument();
+    const used = screen.getByText('Used').closest('tr')!;
+    expect(within(used).getByText('12')).toBeInTheDocument();
+    expect(used.querySelector('time')).toHaveAttribute('datetime', '2026-11-06T09:00:00.000Z');
+    const idle = screen.getByText('Idle').closest('tr')!;
+    expect(within(idle).getByText('0')).toBeInTheDocument();
+    expect(within(idle).getByText('Never')).toBeInTheDocument();
+  });
+
   it('renders hostile text as text', async () => {
     const evil = '<img src=x onerror=alert(1)><script>boom()</script>';
     routes((u) => (u.startsWith('/api/global/memories?') ? page([mem({ title: evil, content: evil, tags: [evil] })]) : undefined));
