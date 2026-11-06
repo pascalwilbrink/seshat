@@ -95,7 +95,7 @@ Do not touch `app-shell.tsx` for this.
 
 ### Current availability
 
-Currently **Overview**, **Search**, **Memories** and **Settings** are available (listed in the navigation). Files, Collections and API Keys already exist as direct routes (`/global/files`, `/w/<slug>/files`, `/global/collections`, `/w/<slug>/collections`, `/w/<slug>/api-keys`). Those routes and their behaviour are preserved; they are simply not listed in the sidebar until their feature work marks the area `available`. MCP has no route yet. Search (`/global/search`, `/w/<slug>/search`) posts to the scope's `search` endpoint, shows cited results whose links open the result's own scope (`/…/files?file=<id>&chunk=<id>&ordinal=<n>` or `/…/memories?memory=<id>`), and shows a notice for keyword-only results. Memories (`/global/memories`, `/w/<slug>/memories`) has a filtered newest-first list, load-more, a detail with successor navigation, create and edit in a side sheet, similar-Memory choices, embedding retry and confirmed forget. Do not expose a route in the navigation before its page follows this guide.
+Currently **Overview**, **Search**, **Memories**, **MCP** (Workspace scopes only) and **Settings** are available (listed in the navigation). Files, Collections and API Keys already exist as direct routes (`/global/files`, `/w/<slug>/files`, `/global/collections`, `/w/<slug>/collections`, `/w/<slug>/api-keys`). Those routes and their behaviour are preserved; they are simply not listed in the sidebar until their feature work marks the area `available`. MCP (`/w/<slug>/mcp`) is described under Page patterns. Search (`/global/search`, `/w/<slug>/search`) posts to the scope's `search` endpoint, shows cited results whose links open the result's own scope (`/…/files?file=<id>&chunk=<id>&ordinal=<n>` or `/…/memories?memory=<id>`), and shows a notice for keyword-only results. Memories (`/global/memories`, `/w/<slug>/memories`) has a filtered newest-first list, load-more, a detail with successor navigation, create and edit in a side sheet, similar-Memory choices, embedding retry and confirmed forget. Do not expose a route in the navigation before its page follows this guide.
 
 ## Shared components
 
@@ -195,4 +195,5 @@ These are design patterns for pages that later feature specs build. They are **n
 
 - The endpoint in a `CopyField`.
 - Client configuration tabs for Gilde, Claude Code and Claude Desktop, each with a `CodeSnippet` (use placeholders such as `<your-api-key>`, never real keys).
-- For a selected key, the list of MCP tools that key's permissions allow.
+- For a selected key, the list of MCP tools that key's permissions allow, computed from `MCP_TOOL_CATALOG` in `@seshat/domain` (`lib/mcp-config.ts`), each marked Read-only, Writing or Destructive with its required permissions. Revoked and expired keys show their status instead of tools; a key with no tools shows an `EmptyState` linking to API Keys.
+- The endpoint comes from `NEXT_PUBLIC_SESHAT_MCP_URL` (validated, default `http://localhost:4200/mcp`); a hint explains that MCP clients connect to the API port directly. The page exists for Workspace scopes only. Currently the tabs are Gilde and Claude Code.

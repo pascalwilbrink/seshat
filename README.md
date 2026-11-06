@@ -126,7 +126,10 @@ pnpm dev       # API on :4200 and web on :3000
 | `TEST_DATABASE_URL` | tests only | Disposable database whose name contains `test`. |
 
 Invalid configuration stops startup with a message that names the variable but never prints its value.
-`apps/web` reads one server-side variable, `API_URL` (default `http://localhost:4200`, never `NEXT_PUBLIC_`).
+`apps/web` reads one server-side variable, `API_URL` (default `http://localhost:4200`, never `NEXT_PUBLIC_`), and one public,
+build-time variable, `NEXT_PUBLIC_SESHAT_MCP_URL` (default `http://localhost:4200/mcp`): the API's public MCP address shown on the
+Workspace MCP page (`/w/<slug>/mcp`). It must be an absolute http(s) URL without credentials, query or fragment; otherwise the
+default is shown with a notice. MCP clients connect to the API port directly, not through the web app.
 
 ### Database and migrations
 - `docker compose up -d db` starts the development database (`pgvector/pgvector:pg17`, local-only credentials
