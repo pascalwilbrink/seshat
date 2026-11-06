@@ -52,6 +52,10 @@ export interface AppConfig {
   mcpMaxUploadBytes: number;
   /** Largest MCP tool result in characters before it is truncated (positive integer). Default: 20000. */
   mcpMaxResultChars: number;
+  /** Days of daily resource-usage counters to keep (positive integer). Default: 365. Lifetime totals are never pruned. */
+  usageRetentionDays: number;
+  /** Days of MCP call history (and `tools/list` counters) to keep (positive integer). Default: 90. */
+  mcpCallRetentionDays: number;
 }
 
 export const DEFAULT_INGESTION_CONCURRENCY = 2;
@@ -63,6 +67,8 @@ export const DEFAULT_EMBEDDING_DIMENSION = 1536;
 
 export const DEFAULT_MCP_MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 export const DEFAULT_MCP_MAX_RESULT_CHARS = 20000;
+export const DEFAULT_USAGE_RETENTION_DAYS = 365;
+export const DEFAULT_MCP_CALL_RETENTION_DAYS = 90;
 export const DEFAULT_MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 
 export const MIN_SESSION_SECRET_LENGTH = 32;
@@ -304,6 +310,9 @@ export function loadConfig(env: EnvSource): AppConfig {
   }
   const mcpMaxResultChars = positiveInt('MCP_MAX_RESULT_CHARS', DEFAULT_MCP_MAX_RESULT_CHARS);
 
+  const usageRetentionDays = positiveInt('USAGE_RETENTION_DAYS', DEFAULT_USAGE_RETENTION_DAYS);
+  const mcpCallRetentionDays = positiveInt('MCP_CALL_RETENTION_DAYS', DEFAULT_MCP_CALL_RETENTION_DAYS);
+
   if (problems.length > 0) throw new ConfigError(problems);
   return {
     nodeEnv,
@@ -326,5 +335,7 @@ export function loadConfig(env: EnvSource): AppConfig {
     memorySimilarityHint,
     mcpMaxUploadBytes,
     mcpMaxResultChars,
+    usageRetentionDays,
+    mcpCallRetentionDays,
   };
 }

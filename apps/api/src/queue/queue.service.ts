@@ -15,6 +15,8 @@ import {
   INGEST_RETRY_DELAY_MAX_SECONDS,
   INGEST_RETRY_DELAY_SECONDS,
   INGEST_RETRY_LIMIT,
+  PRUNE_USAGE_CRON,
+  PRUNE_USAGE_QUEUE,
   QUEUE_STOP_TIMEOUT_MS,
   type QueueName,
 } from './queue.constants.js';
@@ -80,7 +82,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** Minimal pg-boss surface used here, so lifecycle tests can substitute a mock. */
 export type BossLike = Pick<
   PgBoss,
-  'on' | 'start' | 'stop' | 'createQueue' | 'updateQueue' | 'send' | 'work' | 'offWork'
+  'on' | 'start' | 'stop' | 'createQueue' | 'updateQueue' | 'send' | 'work' | 'offWork' | 'schedule'
 >;
 
 /**
@@ -144,6 +146,24 @@ export class QueueService implements OnApplicationBootstrap, BeforeApplicationSh
   }
 
   /**
+   * Registers the processor of the daily `prune-usage` queue (once). The job carries no data; once the queue is
+   * running, a single pg-boss schedule (03:15 UTC, `missed: 'once'` so a deploy gap still prunes) fires it, however many
+   * API processes run. Same start semantics as `registerWorker`.
+   */
+  async registerPruneUsageWorker(handler: () => Promise<void>): Promise<void> {
+    if (this.handlers.has(PRUNE_USAGE_QUEUE)) throw new Error(`A worker is already registered for queue ${PRUNE_USAGE_QUEUE}`);
+    const run = async (_job: Job<any>) => {
+      try {
+        await handler();
+      } catch (err) {
+        throw toQueueJobFailure(err);
+      }
+    };
+    this.handlers.set(PRUNE_USAGE_QUEUE, run);
+    if (this.started) await this.startWorker(PRUNE_USAGE_QUEUE, run);
+  }
+
+  /**
    * Queues an `embed-memory` job. The queue uses the standard policy (no singleton): a newer generation must always
    * be able to queue its own job, and stale or duplicate jobs are harmless because every write is generation-guarded.
    */
@@ -202,6 +222,7 @@ export class QueueService implements OnApplicationBootstrap, BeforeApplicationSh
       for (const [queue, policy] of [
         [INGEST_FILE_QUEUE, 'exclusive'],
         [EMBED_MEMORY_QUEUE, 'standard'],
+        [PRUNE_USAGE_QUEUE, 'standard'],
       ] as const) {
         await boss.createQueue(queue, { policy, ...queueOptions });
         // createQueue keeps an existing queue untouched: apply changed settings on later starts.
@@ -221,10 +242,13 @@ export class QueueService implements OnApplicationBootstrap, BeforeApplicationSh
   private async startWorker(queue: QueueName, handler: (job: Job<any>) => Promise<void>): Promise<void> {
     const boss = this.boss;
     if (!boss) throw new QueueUnavailableError('not_started');
+    if (queue === PRUNE_USAGE_QUEUE) {
+      await boss.schedule(PRUNE_USAGE_QUEUE, PRUNE_USAGE_CRON, null, { tz: 'UTC', missed: 'once' });
+    }
     const id = await boss.work<unknown>(
       queue,
       {
-        localConcurrency: this.options.ingestionConcurrency,
+        localConcurrency: queue === PRUNE_USAGE_QUEUE ? 1 : this.options.ingestionConcurrency,
         batchSize: 1,
         pollingIntervalSeconds: this.options.pollingIntervalSeconds ?? 2,
       },

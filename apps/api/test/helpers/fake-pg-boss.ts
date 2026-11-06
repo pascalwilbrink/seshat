@@ -9,6 +9,7 @@ export class FakePgBoss extends EventEmitter {
   async send() { return 'job-id'; }
   async work() { return 'worker-id'; }
   async offWork() {}
+  async schedule() {}
 }
 
 export const fakePgBossModule = () => ({ PgBoss: FakePgBoss });

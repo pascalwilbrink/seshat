@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { EventEmitter } from 'node:events';
 import { describe, expect, it, vi } from 'vitest';
-import { INGEST_FILE_QUEUE } from './queue.constants.js';
+import { INGEST_FILE_QUEUE, PRUNE_USAGE_CRON, PRUNE_USAGE_QUEUE } from './queue.constants.js';
 import { QueueJobFailure, QueueStartError, QueueUnavailableError, toQueueJobFailure } from './queue-errors.js';
 import { QueueService, type BossLike, type QueueOptions } from './queue.service.js';
 
@@ -28,6 +28,7 @@ class MockBoss extends EventEmitter {
   updateQueue = vi.fn(async (..._a: unknown[]) => void this.calls.push('updateQueue'));
   send = vi.fn(async (..._a: unknown[]) => this.sendResult);
   offWork = vi.fn();
+  schedule = vi.fn(async (..._a: unknown[]) => void this.calls.push('schedule'));
   work = vi.fn(async (_name: string, o: unknown, h: (jobs: any[]) => Promise<void>) => {
     this.calls.push('work');
     this.workOptions = o;
@@ -49,7 +50,7 @@ describe('QueueService lifecycle', () => {
     await service.registerWorker(INGEST_FILE_QUEUE, handler);
     expect(boss.work).not.toHaveBeenCalled();
     await service.onApplicationBootstrap();
-    expect(boss.calls).toEqual(['start', 'createQueue', 'updateQueue', 'createQueue', 'updateQueue', 'work']);
+    expect(boss.calls).toEqual(['start', 'createQueue', 'updateQueue', 'createQueue', 'updateQueue', 'createQueue', 'updateQueue', 'work']);
     expect(boss.createQueue).toHaveBeenCalledWith(
       INGEST_FILE_QUEUE,
       expect.objectContaining({ policy: 'exclusive', retryLimit: 2, retryBackoff: true }),
@@ -175,5 +176,43 @@ describe('worker wrapper', () => {
     const err = await boss.workHandler!([{ id: 'j', name: 'embed-memory', data: { scope: 'global', memoryId: id, generation: -1, content: 'SENTINEL' }, retryCount: 0 } as never]).catch((e: unknown) => e);
     expect(err).toMatchObject({ code: 'invalid_payload' });
     expect(seen).toHaveLength(1);
+  });
+});
+
+describe('daily usage pruning worker', () => {
+  it('creates the queue, schedules one UTC cron and starts a single-concurrency worker once the queue exists', async () => {
+    const { boss, service } = setup();
+    const handler = vi.fn(async () => {});
+    await service.registerPruneUsageWorker(handler);
+    expect(boss.schedule).not.toHaveBeenCalled();
+    await service.onApplicationBootstrap();
+    expect(boss.createQueue).toHaveBeenCalledWith(PRUNE_USAGE_QUEUE, expect.objectContaining({ policy: 'standard' }));
+    expect(boss.schedule).toHaveBeenCalledTimes(1);
+    expect(boss.schedule).toHaveBeenCalledWith(PRUNE_USAGE_QUEUE, PRUNE_USAGE_CRON, null, { tz: 'UTC', missed: 'once' });
+    expect(boss.calls.indexOf('schedule')).toBeGreaterThan(boss.calls.lastIndexOf('updateQueue'));
+    expect(boss.workOptions).toMatchObject({ localConcurrency: 1, batchSize: 1 });
+    await boss.workHandler!([{ id: 'j', data: null }]);
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not schedule anything without a registered worker, and refuses a second worker', async () => {
+    const { boss, service } = setup();
+    await service.onApplicationBootstrap();
+    expect(boss.schedule).not.toHaveBeenCalled();
+    await service.registerPruneUsageWorker(async () => {});
+    expect(boss.schedule).toHaveBeenCalledTimes(1);
+    await expect(service.registerPruneUsageWorker(async () => {})).rejects.toThrow(/already registered/);
+  });
+
+  it('fails the job with a code only, never the thrown message', async () => {
+    const { boss, service } = setup();
+    await service.registerPruneUsageWorker(async () => {
+      throw Object.assign(new Error('relation SENTINEL does not exist'), { code: '42P01' });
+    });
+    await service.onApplicationBootstrap();
+    const err = await boss.workHandler!([{ id: 'j', data: null }]).catch((e: unknown) => e);
+    expect(err).toMatchObject({ code: 'job_failed' });
+    expect(String((err as Error).message)).not.toContain('SENTINEL');
+    expect(String((err as Error).stack)).not.toContain('SENTINEL');
   });
 });

@@ -38,6 +38,8 @@ describe('loadConfig', () => {
       memorySimilarityHint: 0.9,
       mcpMaxUploadBytes: 10485760,
       mcpMaxResultChars: 20000,
+      usageRetentionDays: 365,
+      mcpCallRetentionDays: 90,
     });
   });
 
@@ -201,6 +203,17 @@ describe('loadConfig', () => {
       for (const bad of ['0', '-1', '1.5', 'abc', `3${SENTINEL}`]) {
         expect(problemsOf({ ...VALID, MCP_MAX_UPLOAD_BYTES: bad })).toBe('Invalid configuration: MCP_MAX_UPLOAD_BYTES (must be a positive integer number of bytes)');
         expect(problemsOf({ ...VALID, MCP_MAX_RESULT_CHARS: bad })).toBe('Invalid configuration: MCP_MAX_RESULT_CHARS (must be a positive integer)');
+      }
+    });
+
+    it('validates the usage retention: defaults 365 and 90, positive integers only, never echoed', () => {
+      const ok = loadConfig({ ...VALID });
+      expect([ok.usageRetentionDays, ok.mcpCallRetentionDays]).toEqual([365, 90]);
+      const set = loadConfig({ ...VALID, USAGE_RETENTION_DAYS: '30', MCP_CALL_RETENTION_DAYS: '7' });
+      expect([set.usageRetentionDays, set.mcpCallRetentionDays]).toEqual([30, 7]);
+      for (const bad of ['0', '-1', '1.5', 'abc', `3${SENTINEL}`]) {
+        expect(problemsOf({ ...VALID, USAGE_RETENTION_DAYS: bad })).toBe('Invalid configuration: USAGE_RETENTION_DAYS (must be a positive integer)');
+        expect(problemsOf({ ...VALID, MCP_CALL_RETENTION_DAYS: bad })).toBe('Invalid configuration: MCP_CALL_RETENTION_DAYS (must be a positive integer)');
       }
     });
 
