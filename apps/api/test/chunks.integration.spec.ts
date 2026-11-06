@@ -173,6 +173,7 @@ describeIntegration('chunks schema and startup dimension guard (real PostgreSQL 
   });
 
   it('down removes chunks and the new file columns; up recreates them', async () => {
+    await ds.undoLastMigration({ transaction: 'each' }); // file provenance
     await ds.undoLastMigration({ transaction: 'each' }); // keyword vectors
     await ds.undoLastMigration({ transaction: 'each' }); // memory embedding generation
     await ds.undoLastMigration({ transaction: 'each' }); // memories

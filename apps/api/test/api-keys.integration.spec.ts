@@ -59,8 +59,8 @@ describeIntegration('API keys (real PostgreSQL)', () => {
     it('down drops the table, up recreates it (reversible)', async () => {
       const names = ds.migrations.map((m) => m.constructor.name);
       // Newer migrations (files, Collections, Tags, cleanup ledger, chunks) sit on top of it: revert them first.
-      expect(names.at(-7)).toBe('CreateApiKeys1762500000000');
-      for (let i = 0; i < 7; i += 1) await ds.undoLastMigration({ transaction: 'each' });
+      expect(names.at(-8)).toBe('CreateApiKeys1762500000000');
+      for (let i = 0; i < 8; i += 1) await ds.undoLastMigration({ transaction: 'each' });
       expect(await ds.query(`SELECT to_regclass('"${iso.schema}".api_keys') AS t`)).toEqual([{ t: null }]);
       expect(await ds.query(`SELECT to_regclass('"${iso.schema}".workspaces') AS t`)).not.toEqual([{ t: null }]);
       const again = await ds.runMigrations({ transaction: 'each' });
