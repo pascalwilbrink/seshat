@@ -11,6 +11,7 @@ import { Workspace } from '../src/workspaces/workspace.entity.js';
 import { Chunk } from '../src/ingestion/chunk.entity.js';
 import { Memory } from '../src/memories/memory.entity.js';
 import { TEST_DATABASE_URL, assertDisposableDatabase, createIsolatedSchema, describeIntegration, type IsolatedSchema } from './helpers/integration.js';
+import { migrationNames as allMigrationNames, migrationsFrom, revertThrough } from './helpers/migrations.js';
 
 const sha = (s: string) => createHash('sha256').update(s).digest('hex');
 const DIM = 1536;
@@ -21,7 +22,8 @@ describeIntegration('keyword search vectors (real PostgreSQL with pgvector)', ()
   let iso: IsolatedSchema;
   let ds: DataSource;
   const q = (sql: string, params: unknown[] = []) => ds.query(sql, params) as Promise<Record<string, any>[]>;
-  const migrationNames = () => ds.migrations.map((m) => m.constructor.name);
+  const MIGRATION = 'AddKeywordSearchVectors1763100000000';
+  const migrationNames = () => allMigrationNames(ds);
 
   const addFile = async () =>
     (await q(
@@ -58,15 +60,15 @@ describeIntegration('keyword search vectors (real PostgreSQL with pgvector)', ()
     await ds.initialize();
     // Everything before the keyword migration, so existing rows can be backfilled by it.
     await ds.runMigrations({ transaction: 'each' });
-    await ds.undoLastMigration({ transaction: 'each' }); // file provenance
-    await ds.undoLastMigration({ transaction: 'each' }); // keyword vectors
+    await revertThrough(ds, MIGRATION);
   });
   afterAll(async () => {
     await iso?.dispose();
   });
 
-  it('is discovered as the second to last migration', () => {
-    expect(migrationNames().at(-2)).toBe('AddKeywordSearchVectors1763100000000');
+  it('is discovered directly after the memory embedding generation migration', () => {
+    const names = migrationNames();
+    expect(names.indexOf(MIGRATION)).toBe(names.indexOf('AddMemoryEmbeddingGeneration1763000000000') + 1);
   });
 
   it('indexes rows that existed before the migration', async () => {
@@ -203,13 +205,13 @@ describeIntegration('keyword search vectors (real PostgreSQL with pgvector)', ()
   it('down removes the columns and indexes only; up restores them and reindexes existing rows', async () => {
     const f = await addFile();
     const c = await addChunk(f, 'kilo roundtrip');
-    await ds.undoLastMigration({ transaction: 'each' }); // file provenance
-    await ds.undoLastMigration({ transaction: 'each' }); // keyword vectors
+    const expected = migrationsFrom(ds, MIGRATION);
+    await revertThrough(ds, MIGRATION);
     expect(await q(`SELECT 1 FROM information_schema.columns WHERE table_schema = $1 AND column_name IN ('content_tsv','search_tsv')`, [iso.schema])).toEqual([]);
     expect(await q(`SELECT 1 FROM pg_indexes WHERE schemaname = $1 AND indexname LIKE '%tsv_gin'`, [iso.schema])).toEqual([]);
     expect(await q(`SELECT 1 FROM pg_indexes WHERE schemaname = $1 AND indexname = 'IDX_chunks_embedding_hnsw'`, [iso.schema])).toHaveLength(1);
     expect((await q(`SELECT content FROM chunks WHERE id = $1`, [c]))[0]!.content).toBe('kilo roundtrip');
-    expect((await ds.runMigrations({ transaction: 'each' })).map((m) => m.name)).toEqual(['AddKeywordSearchVectors1763100000000', 'AddFileProvenance1763200000000']);
+    expect((await ds.runMigrations({ transaction: 'each' })).map((m) => m.name)).toEqual(expected);
     expect(await chunkHits('roundtrip')).toContain(c);
   });
 });
