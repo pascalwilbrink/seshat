@@ -64,7 +64,7 @@ describeIntegration('API keys (real PostgreSQL)', () => {
       expect(await ds.query(`SELECT to_regclass('"${iso.schema}".api_keys') AS t`)).toEqual([{ t: null }]);
       expect(await ds.query(`SELECT to_regclass('"${iso.schema}".workspaces') AS t`)).not.toEqual([{ t: null }]);
       const again = await ds.runMigrations({ transaction: 'each' });
-      expect(again.map((m) => m.name)).toEqual(['CreateApiKeys1762500000000', 'CreateFilesCollectionsTags1762600000000', 'CreateStorageCleanupIntents1762700000000', 'CreateChunks1762800000000', 'CreateMemories1762900000000', 'AddMemoryEmbeddingGeneration1763000000000', 'AddKeywordSearchVectors1763100000000']);
+      expect(again.map((m) => m.name)).toEqual(['CreateApiKeys1762500000000', 'CreateFilesCollectionsTags1762600000000', 'CreateStorageCleanupIntents1762700000000', 'CreateChunks1762800000000', 'CreateMemories1762900000000', 'AddMemoryEmbeddingGeneration1763000000000', 'AddKeywordSearchVectors1763100000000', 'AddFileProvenance1763200000000']);
       expect(await ds.runMigrations({ transaction: 'each' })).toEqual([]);
     });
   });

@@ -17,7 +17,7 @@ import type { Memory } from './memory.entity.js';
 import { memoryContentHash } from './memory-content.js';
 import { encodeCursor } from '../files/file-list-query.js';
 import { type MemoryListPage, parseMemoryListQuery } from './memory-list-query.js';
-import { buildMemoryProvenance } from './memory-provenance.js';
+import { type McpClientContext, buildMemoryProvenance } from './memory-provenance.js';
 import { type MemoryEmbeddingCoordinator, returnedRows } from './memory-embedding.coordinator.js';
 import { MEMORY_EMBEDDING_COORDINATOR } from './memory-embedding.worker.js';
 
@@ -178,12 +178,12 @@ export class MemoriesService {
    * predecessor is locked first and marked superseded by the (new or reused) successor in the same transaction.
    * Superseding the reused Memory itself is rejected (400).
    */
-  async create(principal: Principal, scope: ScopeRef, input: CreateMemoryInput): Promise<CreateMemoryResult> {
+  async create(principal: Principal, scope: ScopeRef, input: CreateMemoryInput, client: McpClientContext | null = null): Promise<CreateMemoryResult> {
     this.authorization.assertCan(principal, 'memory.remember', scope);
     const supersedes = input.supersedes ?? null;
     if (supersedes !== null && !isUuid(supersedes)) throw new NotFoundException(NOT_FOUND);
     await this.assertScopeExists(scope);
-    const provenance = buildMemoryProvenance(principal);
+    const provenance = buildMemoryProvenance(principal, client);
     const hash = memoryContentHash(input.content);
     const scopeKey = scopeKeyOf(scope);
     const cols = scopeColumns(scope);
