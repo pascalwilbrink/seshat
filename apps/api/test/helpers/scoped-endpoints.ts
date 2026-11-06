@@ -56,3 +56,24 @@ export function catalogMismatches(): string[] {
   }
   return out;
 }
+
+/**
+ * Admin-only usage analytics routes (`src/usage`). Not key-permission endpoints: the catalog classifies them `admin`, so every
+ * API key is refused (403 in its own Workspace or Global, the generic 404 for another Workspace).
+ */
+export const USAGE_ADMIN_ENDPOINTS = [
+  { action: 'usage.file', method: 'GET', path: 'files/:fileId/usage', ok: 200 },
+  { action: 'usage.memory', method: 'GET', path: 'memories/:memoryId/usage', ok: 200 },
+  { action: 'usage.top', method: 'GET', path: 'usage/top', ok: 200 },
+  { action: 'usage.unused', method: 'GET', path: 'usage/unused', ok: 200 },
+] as const satisfies readonly { action: Action; method: 'GET'; path: string; ok: 200 }[];
+
+/** The Express route strings of the usage routes, in Global and in a Workspace. */
+export function usageRouteStrings(): string[] {
+  return USAGE_ADMIN_ENDPOINTS.flatMap((e) => [`${e.method} /api/global/${e.path}`, `${e.method} /api/workspaces/:workspaceId/${e.path}`]).sort();
+}
+
+/** Every usage action must be `admin` in the shared catalog (no key permission, no new grants). */
+export function usageCatalogMismatches(): string[] {
+  return USAGE_ADMIN_ENDPOINTS.filter((e) => getActionRequirement(e.action)?.classification !== 'admin').map((e) => `${e.action}: not admin`);
+}

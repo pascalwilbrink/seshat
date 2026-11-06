@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException, Optional, ServiceUnavailableException } from '@nestjs/common';
+import { accessSummaries } from '../usage/usage-summaries.js';
 import { getDataSourceToken } from '@nestjs/typeorm';
 import type { DataSource, EntityManager } from 'typeorm';
 import { UsageCollector } from '../usage/usage-request-context.js';
@@ -158,8 +159,14 @@ export class MemoriesService {
     const tagsBy = new Map<string, string[]>();
     for (const r of tagRows) tagsBy.set(r.memory_id, [...(tagsBy.get(r.memory_id) ?? []), r.name]);
     const last = page[page.length - 1];
+    // Admin only: batched usage projection; keys get neither property (not even null).
+    const usage = principal.kind === 'admin' ? await accessSummaries(this.dataSource, 'memory', scopeKey, page.map((r) => r.id)) : null;
     return {
-      items: page.map((r) => toDto(r, tagsBy.get(r.id) ?? [])),
+      items: page.map((r) => {
+        const dto = toDto(r, tagsBy.get(r.id) ?? []);
+        const u = usage?.get(r.id);
+        return u ? { ...dto, accessCount30d: u.accessCount30d, lastAccessedAt: u.lastAccessedAt } : dto;
+      }),
       nextCursor: hasMore && last ? encodeCursor({ createdAt: last.cursor_ts, id: last.id }) : null,
       hasMore,
       limit: q.limit,

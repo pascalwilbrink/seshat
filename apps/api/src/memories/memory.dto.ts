@@ -91,6 +91,9 @@ export type UpdateMemoryInput = z.infer<typeof updateMemorySchema>;
 
 /** Allowlisted Memory response. Never includes the embedding, the content hash, key digests or authentication data. */
 export interface MemoryDto {
+  /** Admin list responses only (absent for API keys): accesses in the last 30 UTC days and the last access ever. */
+  accessCount30d?: number;
+  lastAccessedAt?: string | null;
   id: string;
   scope: 'global' | 'workspace';
   workspaceId: string | null;

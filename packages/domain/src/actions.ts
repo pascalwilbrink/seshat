@@ -98,6 +98,11 @@ export const ACTION_CATALOG = {
   'memory.supersede': res('write', 'memories:write'),
   // Admin only: re-queues a failed embedding.
   'memory.retryEmbedding': ADMIN,
+  // Usage insights (admin only, never available to keys): per-resource usage, top and unused resources of a scope.
+  'usage.file': ADMIN,
+  'usage.memory': ADMIN,
+  'usage.top': ADMIN,
+  'usage.unused': ADMIN,
   // Future: search is a read operation.
   'search.query': perm('read', 'search'),
 } as const satisfies Record<string, ActionRequirement>;
