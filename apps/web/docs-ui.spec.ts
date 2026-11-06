@@ -52,7 +52,7 @@ describe('docs/ui.md stays consistent with the code', () => {
 
   it('matches the navigation config', () => {
     expect(guide).toContain('apps/web/lib/navigation.ts');
-    expect(NAV_AREAS.filter((a) => a.available).map((a) => a.id)).toEqual(['overview', 'search', 'memories', 'settings']);
+    expect(NAV_AREAS.filter((a) => a.available).map((a) => a.id)).toEqual(['overview', 'search', 'memories', 'mcp', 'settings']);
     for (const a of NAV_AREAS) expect(guide, a.id).toContain(`\`${a.id}\``);
   });
 

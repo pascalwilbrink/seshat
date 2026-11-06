@@ -8,7 +8,8 @@ import {
 } from '@nestjs/common';
 import { ApiKeyStore } from '../api-keys/api-key.store.js';
 import { AuthService } from './auth.service.js';
-import type { HttpRequest } from './http.js';
+import { isMcpPath } from '../mcp/mcp-limits.js';
+import type { HttpRequest, HttpResponse } from './http.js';
 import { CLOCK, type Clock } from './login-rate-limiter.js';
 import { ADMIN_PRINCIPAL, type ApiKeyPrincipal } from './principal.js';
 import { SESSION_COOKIE_NAME, readCookie } from './session-token.js';
@@ -65,6 +66,19 @@ export class SessionGuard implements CanActivate {
     const req = context.switchToHttp().getRequest<HttpRequest>();
 
     const authorization = req.headers.authorization;
+
+    // `/mcp` accepts API keys only: a session cookie (with or without a key) is not a credential there, and every
+    // failure is the same 401 with a Bearer challenge and no detail.
+    if (isMcpPath(req.path)) {
+      if (!hasBearerScheme(authorization) || hasSessionCookie(req.headers.cookie)) throw this.mcpChallenge(context);
+      try {
+        req.principal = await this.authenticateKey(authorization as string);
+      } catch {
+        throw this.mcpChallenge(context);
+      }
+      return true;
+    }
+
     const bearer = hasBearerScheme(authorization);
     if (bearer && hasSessionCookie(req.headers.cookie)) throw new BadRequestException('Ambiguous credentials');
 
@@ -79,6 +93,11 @@ export class SessionGuard implements CanActivate {
     if (!cookie || !this.auth.isValidSessionToken(cookie)) throw new UnauthorizedException('Unauthorized');
     req.principal = ADMIN_PRINCIPAL;
     return true;
+  }
+
+  private mcpChallenge(context: ExecutionContext): UnauthorizedException {
+    context.switchToHttp().getResponse<HttpResponse>().setHeader('WWW-Authenticate', 'Bearer');
+    return new UnauthorizedException('Unauthorized');
   }
 
   private async authenticateKey(header: string): Promise<ApiKeyPrincipal> {

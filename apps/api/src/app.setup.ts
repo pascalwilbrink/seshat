@@ -1,11 +1,14 @@
-import { type INestApplication, type LoggerService } from '@nestjs/common';
+import { type INestApplication, type LoggerService, RequestMethod } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import type { AppConfig } from './config/app-config.js';
+import { DEFAULT_MCP_MAX_UPLOAD_BYTES } from './config/app-config.js';
+import { MCP_PATH, isMcpPath, mcpBodyLimitBytes } from './mcp/mcp-limits.js';
 
-const MAX_BODY_BYTES = 16 * 1024;
+export const MAX_BODY_BYTES = 16 * 1024;
 
 interface Req {
   method: string;
+  path?: string;
   headers: Record<string, string | string[] | undefined>;
   body?: unknown;
   on(event: string, cb: (...args: any[]) => void): unknown;
@@ -21,6 +24,15 @@ interface Res {
  * of the submitted body (for example a password), so errors here never include request content.
  */
 export function sanitizedJsonParser(req: Req, res: Res, next: () => void): void {
+  return parseJson(MAX_BODY_BYTES, req, res, next);
+}
+
+/** The same parser with another size limit (used for `/mcp`, whose limit derives from MCP_MAX_UPLOAD_BYTES). */
+export function jsonParserWithLimit(limitBytes: number) {
+  return (req: Req, res: Res, next: () => void): void => parseJson(limitBytes, req, res, next);
+}
+
+function parseJson(limit: number, req: Req, res: Res, next: () => void): void {
   const type = String(req.headers['content-type'] ?? '');
   if (!/^application\/json\s*(;|$)/i.test(type) || ['GET', 'HEAD'].includes(req.method)) return next();
   const chunks: Buffer[] = [];
@@ -33,7 +45,7 @@ export function sanitizedJsonParser(req: Req, res: Res, next: () => void): void 
   };
   req.on('data', (chunk: Buffer) => {
     size += chunk.length;
-    if (size > MAX_BODY_BYTES) {
+    if (size > limit) {
       fail(413, 'Payload too large');
       req.destroy();
       return;
@@ -53,8 +65,14 @@ export function sanitizedJsonParser(req: Req, res: Res, next: () => void): void 
 }
 
 /** HTTP configuration shared by production (main.ts) and tests, so they cannot drift. */
-export function configureApp(app: INestApplication, config: Pick<AppConfig, 'trustProxy'>): void {
-  app.setGlobalPrefix('api');
+export function configureApp(
+  app: INestApplication,
+  config: Pick<AppConfig, 'trustProxy'> & Partial<Pick<AppConfig, 'mcpMaxUploadBytes'>>,
+): void {
+  // `/mcp` is served at the root path, outside the `api` prefix.
+  app.setGlobalPrefix('api', {
+    exclude: [RequestMethod.POST, RequestMethod.GET, RequestMethod.DELETE].map((method) => ({ path: MCP_PATH.slice(1), method })),
+  });
   const express = app.getHttpAdapter().getInstance() as {
     set(name: string, value: unknown): unknown;
     disable(name: string): unknown;
@@ -62,12 +80,14 @@ export function configureApp(app: INestApplication, config: Pick<AppConfig, 'tru
   express.disable('x-powered-by');
   // Never trust forwarding headers unless a proxy hop count is configured explicitly.
   express.set('trust proxy', config.trustProxy);
-  app.use(sanitizedJsonParser);
+  // Only a request that presents a Bearer credential may use the large `/mcp` limit; everything else keeps 16 KB.
+  const mcpParser = jsonParserWithLimit(mcpBodyLimitBytes(config.mcpMaxUploadBytes ?? DEFAULT_MCP_MAX_UPLOAD_BYTES));
+  app.use((req: Req, res: Res, next: () => void) => (isMcpPath(req.path ?? '') && /^Bearer[ \t]/i.test(String(req.headers.authorization ?? '')) ? mcpParser(req, res, next) : sanitizedJsonParser(req, res, next)));
 }
 
 export async function createApp(
   module: Parameters<typeof NestFactory.create>[0],
-  config: Pick<AppConfig, 'trustProxy'>,
+  config: Pick<AppConfig, 'trustProxy'> & Partial<Pick<AppConfig, 'mcpMaxUploadBytes'>>,
   logger?: LoggerService | false,
 ): Promise<INestApplication> {
   const app = await NestFactory.create(module, { bodyParser: false, ...(logger === undefined ? {} : { logger }) });

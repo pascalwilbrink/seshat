@@ -18,6 +18,9 @@ import { SanitizedExceptionFilter } from '../src/common/sanitized-exception.filt
 import { ConfigModule } from '../src/config/config.module.js';
 import { EMBEDDING_SERVICE } from '../src/ingestion/embedding.service.js';
 import { FakeEmbeddingService } from '../src/ingestion/fake-embedding.service.js';
+import { McpController } from '../src/mcp/mcp.controller.js';
+import { McpService } from '../src/mcp/mcp.service.js';
+import { MCP_TOOL_REGISTRY, McpToolRegistry } from '../src/mcp/mcp-registry.js';
 import { RetrievalService } from '../src/search/retrieval.service.js';
 import { SearchController } from '../src/search/search.controller.js';
 import { SearchService } from '../src/search/search.service.js';
@@ -242,6 +245,54 @@ describe('search and context: queries, content and provider errors stay out of l
       expect(embed).toHaveBeenCalled();
     } finally {
       await a.close();
+    }
+  });
+});
+
+describe('/mcp: credentials, bodies and failures stay out of responses and logs', () => {
+  it('never echoes a presented key, cookie, body or exception text, and logs nothing sensitive', async () => {
+    vi.stubEnv('DATABASE_URL', 'postgres://u:p@localhost:5432/db');
+    for (const [k, v] of Object.entries({ ...TEST_ADMIN_ENV, NODE_ENV: 'test' })) vi.stubEnv(k, v);
+    const lines: string[] = [];
+    const push = (...a: unknown[]) => void lines.push(a.map((x) => (typeof x === 'string' ? x : JSON.stringify(x))).join(' '));
+    const logger: LoggerService = { log: push, error: push, warn: push, debug: push, verbose: push, fatal: push };
+    const SENTINEL_KEY = 'sk_seshat_SENTINEL0_keysecret-5e2a0123456789abcdefghijkl';
+    const SENTINEL_MCP_BODY = 'SENTINEL-mcp-body-91c3';
+    @Module({
+      imports: [ConfigModule],
+      controllers: [McpController],
+      providers: [
+        { provide: CLOCK, useValue: systemClock }, AuthService, LoginRateLimiter, SessionGuard,
+        { provide: APP_GUARD, useExisting: SessionGuard }, { provide: APP_FILTER, useClass: SanitizedExceptionFilter },
+        { provide: ApiKeyStore, useValue: { findByKey: async () => { throw new Error(SENTINEL_DRIVER); }, touchLastUsed: async () => false } },
+        AuthorizationService, McpService, { provide: MCP_TOOL_REGISTRY, useFactory: () => new McpToolRegistry() },
+      ],
+    })
+    class Root {}
+    const nest = await createApp(Root, { trustProxy: false }, logger);
+    await nest.listen(0, '127.0.0.1');
+    try {
+      const base = `http://127.0.0.1:${(nest.getHttpServer().address() as AddressInfo).port}`;
+      const cookie = `${SESSION_COOKIE_NAME}=${nest.get(AuthService).issueSessionToken()}`;
+      const seen: string[] = [];
+      for (const headers of [
+        { authorization: `Bearer ${SENTINEL_KEY}` },
+        { authorization: `Bearer ${SENTINEL_KEY}`, cookie },
+        { cookie },
+        {},
+      ] as Record<string, string>[]) {
+        for (const body of [JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: { note: SENTINEL_MCP_BODY } }), `{"x": "${SENTINEL_MCP_BODY}`]) {
+          const res = await fetch(`${base}/mcp`, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body });
+          seen.push(await res.text(), [...res.headers.entries()].map(([k, v]) => `${k}: ${v}`).join('\n'));
+          expect([401, 400]).toContain(res.status);
+        }
+      }
+      const everything = `${seen.join('\n')}\n${lines.join('\n')}`;
+      for (const sentinel of [SENTINEL_KEY, 'SENTINEL0', SENTINEL_MCP_BODY, SENTINEL_DRIVER, TEST_SESSION_SECRET, cookie.split('=')[1]!]) {
+        expect(everything).not.toContain(sentinel);
+      }
+    } finally {
+      await nest.close();
     }
   });
 });

@@ -15,10 +15,11 @@ describe('navigation config', () => {
     expect(labels('system')).toEqual(['Settings']);
     expect(NAV_AREAS.filter((a) => a.group === 'developer').every((a) => a.scopes.length === 1 && a.scopes[0] === 'workspace')).toBe(true);
   });
-  it('lists Overview, Search, Memories and Settings, in both scopes', () => {
-    for (const scope of [G, W]) {
-      expect(visibleGroups(scope).flatMap((g) => g.areas.map((a) => a.label))).toEqual(['Overview', 'Search', 'Memories', 'Settings']);
-    }
+  it('lists Overview, Search, Memories and Settings in Global, and MCP only in Workspaces', () => {
+    const labels = (scope: typeof G | typeof W) => visibleGroups(scope).flatMap((g) => g.areas.map((a) => a.label));
+    expect(labels(G)).toEqual(['Overview', 'Search', 'Memories', 'Settings']);
+    expect(labels(W)).toEqual(['Overview', 'Search', 'Memories', 'MCP', 'Settings']);
+    expect(areaHref(W, byId('mcp'))).toBe('/w/a/mcp');
   });
   it('still resolves direct routes of unavailable areas', () => {
     expect(areaFromPathname('/w/a/files')?.id).toBe('files');

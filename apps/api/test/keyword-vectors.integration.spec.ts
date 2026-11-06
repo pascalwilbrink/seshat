@@ -58,14 +58,15 @@ describeIntegration('keyword search vectors (real PostgreSQL with pgvector)', ()
     await ds.initialize();
     // Everything before the keyword migration, so existing rows can be backfilled by it.
     await ds.runMigrations({ transaction: 'each' });
-    await ds.undoLastMigration({ transaction: 'each' });
+    await ds.undoLastMigration({ transaction: 'each' }); // file provenance
+    await ds.undoLastMigration({ transaction: 'each' }); // keyword vectors
   });
   afterAll(async () => {
     await iso?.dispose();
   });
 
-  it('is discovered as the last migration', () => {
-    expect(migrationNames().at(-1)).toBe('AddKeywordSearchVectors1763100000000');
+  it('is discovered as the second to last migration', () => {
+    expect(migrationNames().at(-2)).toBe('AddKeywordSearchVectors1763100000000');
   });
 
   it('indexes rows that existed before the migration', async () => {
@@ -202,12 +203,13 @@ describeIntegration('keyword search vectors (real PostgreSQL with pgvector)', ()
   it('down removes the columns and indexes only; up restores them and reindexes existing rows', async () => {
     const f = await addFile();
     const c = await addChunk(f, 'kilo roundtrip');
-    await ds.undoLastMigration({ transaction: 'each' });
+    await ds.undoLastMigration({ transaction: 'each' }); // file provenance
+    await ds.undoLastMigration({ transaction: 'each' }); // keyword vectors
     expect(await q(`SELECT 1 FROM information_schema.columns WHERE table_schema = $1 AND column_name IN ('content_tsv','search_tsv')`, [iso.schema])).toEqual([]);
     expect(await q(`SELECT 1 FROM pg_indexes WHERE schemaname = $1 AND indexname LIKE '%tsv_gin'`, [iso.schema])).toEqual([]);
     expect(await q(`SELECT 1 FROM pg_indexes WHERE schemaname = $1 AND indexname = 'IDX_chunks_embedding_hnsw'`, [iso.schema])).toHaveLength(1);
     expect((await q(`SELECT content FROM chunks WHERE id = $1`, [c]))[0]!.content).toBe('kilo roundtrip');
-    expect((await ds.runMigrations({ transaction: 'each' })).map((m) => m.name)).toEqual(['AddKeywordSearchVectors1763100000000']);
+    expect((await ds.runMigrations({ transaction: 'each' })).map((m) => m.name)).toEqual(['AddKeywordSearchVectors1763100000000', 'AddFileProvenance1763200000000']);
     expect(await chunkHits('roundtrip')).toContain(c);
   });
 });
