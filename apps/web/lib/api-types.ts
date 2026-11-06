@@ -13,6 +13,28 @@ export type OverviewDto =
   | { scope: 'global'; name: string }
   | { scope: 'workspace'; id: string; name: string; slug: string; description: string | null; createdAt: string };
 
+export const USAGE_WINDOWS = [7, 30, 90] as const;
+export type UsageWindowDays = (typeof USAGE_WINDOWS)[number];
+export type McpOutcome = 'ok' | 'validation_error' | 'forbidden' | 'not_found' | 'unknown_tool' | 'internal_error';
+
+/** `GET .../usage/overview?days=`: one aggregate per scope and window. Only ids, counts, tool names and Workspace identity; never titles or content. */
+export interface UsageOverviewDto {
+  scope: 'global' | 'workspace';
+  workspaceId: string | null;
+  window: { days: UsageWindowDays; from: string; to: string };
+  files: { total: number; indexed: number; failed: number };
+  memories: { total: number; active: number; superseded: number };
+  mcp: { calls: number; errors: number; errorRate: number };
+  unused: { files: number; memories: number };
+  accessesDaily: { day: string; total: number; byChannel: Record<'ui' | 'api' | 'mcp', number> }[];
+  callsDaily: { day: string; total: number; byOutcome: Record<McpOutcome, number> }[];
+  topTools: { tool: string; calls: number }[];
+  topFiles: { id: string; count: number }[];
+  topMemories: { id: string; count: number }[];
+  /** Global only; null in a Workspace. */
+  callsByWorkspace: { workspaceId: string; slug: string; name: string; calls: number }[] | null;
+}
+
 export type ApiKeyStatus = 'active' | 'revoked' | 'expired';
 
 /** Safe key metadata as returned by the API: never a secret or digest. */

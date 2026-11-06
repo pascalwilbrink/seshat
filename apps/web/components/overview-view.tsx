@@ -14,6 +14,7 @@ import { ErrorState } from './error-state';
 import { PageHeader } from './page-header';
 import { RelativeTime } from './relative-time';
 import { StatCard } from './stat-card';
+import { UsageDashboard } from './usage-dashboard';
 import { useWorkspaces } from './workspaces-provider';
 
 type Load = { status: 'loading' } | { status: 'error' } | { status: 'not-found' } | { status: 'ready'; data: OverviewDto };
@@ -117,6 +118,7 @@ export function OverviewView({ scope }: { scope: Scope }) {
             <StatCard label="Workspaces" value={workspaceCount} icon={Boxes} hint="Available to you" />
           </div>
         ) : null}
+        <UsageDashboard scope={scope} base="/api/global" />
       </section>
     );
   }
@@ -135,6 +137,7 @@ export function OverviewView({ scope }: { scope: Scope }) {
           </dd>
         </dl>
       </Card>
+      <UsageDashboard key={data.id} scope={scope} base={`/api/workspaces/${encodeURIComponent(data.id)}`} />
     </section>
   );
 }
