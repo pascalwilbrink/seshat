@@ -45,6 +45,8 @@ const EXPECTED_ROUTES: string[] = [
   'GET /api/global/files/:fileId/chunks',
   'GET /api/global/files/:fileId/download',
   'GET /api/global/files/:fileId/usage',
+  'GET /api/global/mcp-calls',
+  'GET /api/global/mcp-calls/:callId',
   'GET /api/global/memories',
   'GET /api/global/memories/:memoryId',
   'GET /api/global/memories/:memoryId/related',
@@ -64,6 +66,8 @@ const EXPECTED_ROUTES: string[] = [
   'GET /api/workspaces/:workspaceId/files/:fileId/chunks',
   'GET /api/workspaces/:workspaceId/files/:fileId/download',
   'GET /api/workspaces/:workspaceId/files/:fileId/usage',
+  'GET /api/workspaces/:workspaceId/mcp-calls',
+  'GET /api/workspaces/:workspaceId/mcp-calls/:callId',
   'GET /api/workspaces/:workspaceId/memories',
   'GET /api/workspaces/:workspaceId/memories/:memoryId',
   'GET /api/workspaces/:workspaceId/memories/:memoryId/related',
@@ -208,14 +212,14 @@ describe('default-deny route coverage', () => {
   });
 
   it('the HTTP isolation matrix enumerates exactly the Files, Collections and Tags routes that are registered', () => {
-    const scoped = (r: string) => !/\/usage(\/|$)/.test(r) && /\/api\/(global|workspaces\/:workspaceId)\/(files|collections|tags)(\/|$)/.test(r);
+    const scoped = (r: string) => !/\/(usage|mcp-calls)(\/|$)/.test(r) && /\/api\/(global|workspaces\/:workspaceId)\/(files|collections|tags)(\/|$)/.test(r);
     const production = routes.filter((r) => !r.path.startsWith('/api/future-feature')).map((r) => `${r.method} ${r.path}`).filter(scoped).sort();
     expect(production).toEqual(expectedRouteStrings());
     expect(catalogMismatches()).toEqual([]);
   });
 
   it('enumerates exactly the registered usage routes, all admin-only in the shared catalog', () => {
-    const production = routes.map((r) => `${r.method} ${r.path}`).filter((r) => /\/usage(\/|$)/.test(r)).sort();
+    const production = routes.map((r) => `${r.method} ${r.path}`).filter((r) => /\/(usage|mcp-calls)(\/|$)/.test(r)).sort();
     expect(production).toEqual(usageRouteStrings());
     expect(usageCatalogMismatches()).toEqual([]);
   });

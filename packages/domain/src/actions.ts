@@ -103,6 +103,9 @@ export const ACTION_CATALOG = {
   'usage.memory': ADMIN,
   'usage.top': ADMIN,
   'usage.unused': ADMIN,
+  // MCP call history: list and one call (Workspace, and across Workspaces under Global).
+  'usage.mcpCalls': ADMIN,
+  'usage.mcpCall': ADMIN,
   // Future: search is a read operation.
   'search.query': perm('read', 'search'),
 } as const satisfies Record<string, ActionRequirement>;

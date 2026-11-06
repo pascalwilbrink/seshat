@@ -2,6 +2,8 @@ import { Global, Module } from '@nestjs/common';
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import { AuthModule } from '../auth/auth.module.js';
 import { UsageAccessInterceptor } from './usage-access.interceptor.js';
+import { McpCallsController } from './mcp-calls.controller.js';
+import { McpCallsService } from './mcp-calls.service.js';
 import { UsageController } from './usage.controller.js';
 import { UsageService } from './usage.service.js';
 import { UsagePersistenceService } from './usage-persistence.service.js';
@@ -14,8 +16,8 @@ import { UsageRetentionService } from './usage-retention.service.js';
 @Global()
 @Module({
   imports: [AuthModule],
-  controllers: [UsageController],
-  providers: [{ provide: APP_INTERCEPTOR, useClass: UsageAccessInterceptor }, UsageService, UsagePersistenceService, UsageRecorderService, UsageCollector, UsageRetentionService, UsagePruneWorker],
+  controllers: [UsageController, McpCallsController],
+  providers: [{ provide: APP_INTERCEPTOR, useClass: UsageAccessInterceptor }, UsageService, McpCallsService, UsagePersistenceService, UsageRecorderService, UsageCollector, UsageRetentionService, UsagePruneWorker],
   exports: [UsageService, UsagePersistenceService, UsageRecorderService, UsageCollector, UsageRetentionService],
 })
 export class UsageModule {}
