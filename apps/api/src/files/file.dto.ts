@@ -28,6 +28,9 @@ export interface FileDto {
   };
   createdAt: string;
   updatedAt: string;
+  /** Admin list responses only (absent, not null, for API keys): accesses in the last 30 UTC days and the last access ever. */
+  accessCount30d?: number;
+  lastAccessedAt?: string | null;
 }
 
 export interface FileRow {

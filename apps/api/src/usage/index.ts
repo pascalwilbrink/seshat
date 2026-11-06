@@ -5,3 +5,5 @@ export { UsagePersistenceService, UsagePersistenceError } from './usage-persiste
 export { UsageRetentionService, utcCutoff, type UsagePruneResult } from './usage-retention.service.js';
 export { UsageRecorderService, USAGE_BUFFER_LIMITS, USAGE_FLUSH_INTERVAL_MS, type UsageBatchSink } from './usage-recorder.service.js';
 export { UsageCollector, UsageRequestContext } from './usage-request-context.js';
+export { UsageService } from './usage.service.js';
+export { accessSummaries, type AccessSummary } from './usage-summaries.js';

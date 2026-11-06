@@ -58,6 +58,10 @@ export const EXPECTED: Record<string, Expected> = {
   'memory.forget': { kind: 'delete', permission: 'memories:delete', ...MEMORY_READ },
   'memory.supersede': { kind: 'write', permission: 'memories:write', ...MEMORY_READ },
   'memory.retryEmbedding': { kind: 'admin' },
+  'usage.file': { kind: 'admin' },
+  'usage.memory': { kind: 'admin' },
+  'usage.top': { kind: 'admin' },
+  'usage.unused': { kind: 'admin' },
   'search.query': { kind: 'read', permission: 'search' },
 };
 
