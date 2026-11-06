@@ -11,6 +11,7 @@ import { FilesModule } from './files/files.module.js';
 import { IngestionModule } from './ingestion/ingestion.module.js';
 import { HealthController } from './health.controller.js';
 import { HealthService } from './health.service.js';
+import { McpModule } from './mcp/mcp.module.js';
 import { MemoriesModule } from './memories/memories.module.js';
 import { QueueModule } from './queue/queue.module.js';
 import { SearchModule } from './search/search.module.js';
@@ -21,7 +22,7 @@ import { WorkspacesModule } from './workspaces/workspaces.module.js';
 
 @Module({
   // EventEmitterModule.forRoot() is global: feature modules just inject EventEmitter2 / use @OnEvent.
-  imports: [ConfigModule, DatabaseModule, EventEmitterModule.forRoot(), AuthModule, WorkspacesModule, ApiKeysModule, QueueModule, ScopesModule, StorageModule, CollectionsModule, TagsModule, FilesModule, IngestionModule, MemoriesModule, SearchModule],
+  imports: [ConfigModule, DatabaseModule, EventEmitterModule.forRoot(), AuthModule, WorkspacesModule, ApiKeysModule, QueueModule, ScopesModule, StorageModule, CollectionsModule, TagsModule, FilesModule, IngestionModule, MemoriesModule, SearchModule, McpModule],
   controllers: [HealthController],
   providers: [HealthService, { provide: APP_FILTER, useClass: SanitizedExceptionFilter }],
 })

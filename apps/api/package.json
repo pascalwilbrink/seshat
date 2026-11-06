@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@ai-sdk/openai": "^4.0.109",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "@nestjs/common": "^12.3.2",
     "@nestjs/core": "^12.3.2",
     "@nestjs/event-emitter": "^12.0.1",

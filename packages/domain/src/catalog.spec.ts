@@ -120,3 +120,17 @@ describe('action catalog', () => {
     }
   });
 });
+
+describe('MCP tool requirements', () => {
+  it('evaluates allOf and anyOf requirements', async () => {
+    const { satisfiesToolRequirement, missingToolPermissions, mcpAnnotationsFor } = await import('./mcp-tools.js');
+    expect(satisfiesToolRequirement({ allOf: ['search', 'files:read'] }, ['search', 'files:read'])).toBe(true);
+    expect(missingToolPermissions({ allOf: ['search', 'files:read'] }, ['search'])).toEqual(['files:read']);
+    expect(satisfiesToolRequirement({ anyOf: ['files:read', 'memories:read'] }, ['memories:read'])).toBe(true);
+    expect(missingToolPermissions({ anyOf: ['files:read', 'memories:read'] }, ['search'])).toEqual(['files:read', 'memories:read']);
+    expect(satisfiesToolRequirement({ allOf: ['files:read'] }, ['global:read'])).toBe(false);
+    expect(mcpAnnotationsFor('read')).toEqual({ readOnlyHint: true, destructiveHint: false });
+    expect(mcpAnnotationsFor('write')).toEqual({ readOnlyHint: false, destructiveHint: false });
+    expect(mcpAnnotationsFor('destructive')).toEqual({ readOnlyHint: false, destructiveHint: true });
+  });
+});

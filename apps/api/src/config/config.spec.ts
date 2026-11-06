@@ -36,6 +36,8 @@ describe('loadConfig', () => {
       embeddingModel: 'text-embedding-3-small',
       embeddingDimension: 1536,
       memorySimilarityHint: 0.9,
+      mcpMaxUploadBytes: 10485760,
+      mcpMaxResultChars: 20000,
     });
   });
 
@@ -190,6 +192,15 @@ describe('loadConfig', () => {
       for (const bad of ['abc', '-0.1', '1.01', 'NaN', 'Infinity', '0x1', '1e0', `0.5${SENTINEL}`]) {
         const message = problemsOf({ ...VALID, MEMORY_SIMILARITY_HINT: bad });
         expect(message).toBe('Invalid configuration: MEMORY_SIMILARITY_HINT (must be a number between 0 and 1)');
+      }
+    });
+
+    it('validates the MCP caps: defaults, positive integers only, never echoed', () => {
+      const ok = loadConfig({ ...VALID, MCP_MAX_UPLOAD_BYTES: '2048', MCP_MAX_RESULT_CHARS: '500' });
+      expect([ok.mcpMaxUploadBytes, ok.mcpMaxResultChars]).toEqual([2048, 500]);
+      for (const bad of ['0', '-1', '1.5', 'abc', `3${SENTINEL}`]) {
+        expect(problemsOf({ ...VALID, MCP_MAX_UPLOAD_BYTES: bad })).toBe('Invalid configuration: MCP_MAX_UPLOAD_BYTES (must be a positive integer number of bytes)');
+        expect(problemsOf({ ...VALID, MCP_MAX_RESULT_CHARS: bad })).toBe('Invalid configuration: MCP_MAX_RESULT_CHARS (must be a positive integer)');
       }
     });
 
