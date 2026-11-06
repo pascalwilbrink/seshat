@@ -35,6 +35,8 @@ const EXPECTED_ROUTES: string[] = [
   'DELETE /api/workspaces/:workspaceId/files/:fileId',
   'DELETE /api/workspaces/:workspaceId/memories/:memoryId',
   'DELETE /api/workspaces/:workspaceId/tags/:tagId',
+  // MCP: served at the root path (outside the /api prefix), API keys only, stateless: POST serves, GET and DELETE answer 405.
+  'DELETE /mcp',
   'GET /api/auth/me',
   'GET /api/global/collections',
   'GET /api/global/collections/:collectionId',
@@ -62,6 +64,7 @@ const EXPECTED_ROUTES: string[] = [
   'GET /api/workspaces/:workspaceId/memories/:memoryId/related',
   'GET /api/workspaces/:workspaceId/overview',
   'GET /api/workspaces/:workspaceId/tags',
+  'GET /mcp',
   'POST /api/auth/login',
   'POST /api/auth/logout',
   'POST /api/global/collections',
@@ -85,6 +88,7 @@ const EXPECTED_ROUTES: string[] = [
   'POST /api/workspaces/:workspaceId/memories/:memoryId/retry-embedding',
   'POST /api/workspaces/:workspaceId/memories/:memoryId/supersede',
   'POST /api/workspaces/:workspaceId/search',
+  'POST /mcp',
   'PUT /api/global/collections/:collectionId',
   'PUT /api/global/files/:fileId',
   'PUT /api/global/memories/:memoryId',
@@ -134,6 +138,9 @@ beforeAll(async () => {
   const found = new Set<string>();
   for (const layer of express.router.stack) {
     if (!layer.route) continue;
+    // Nest registers a not-found handler for every path excluded from the global prefix (`/mcp`) on all HTTP methods.
+    // It answers 404 for the methods no controller serves; it is no endpoint, so it is not listed.
+    if (Object.values(layer.route.methods).filter(Boolean).length > 5) continue;
     for (const [method, on] of Object.entries(layer.route.methods)) {
       if (on) found.add(`${method.toUpperCase()} ${layer.route.path}`);
     }
@@ -171,7 +178,7 @@ describe('default-deny route coverage', () => {
     expect(keys).toContain('GET /api/global/workspaces');
     expect(keys).toContain('GET /api/workspaces/:workspaceId');
     // Prefixes are applied and the test-only controller (no public metadata) is part of the enumeration.
-    expect(routes.every((r) => r.path.startsWith('/api/'))).toBe(true);
+    expect(routes.every((r) => r.path.startsWith('/api/') || r.path === '/mcp')).toBe(true);
     for (const m of ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']) {
       expect(keys.some((k) => k.startsWith(`${m} /api/future-feature`))).toBe(true);
     }
@@ -242,7 +249,20 @@ describe('default-deny route coverage', () => {
       expect(res.status, `${method} ${path}`).toBe(401);
       const both = await call(method, materialize(path), { ...bearer, cookie: 'seshat_session=x' });
       await both.text();
-      expect(both.status, `${method} ${path}`).toBe(400);
+      // `/mcp` accepts keys only: a cookie next to a key is a plain 401 there, not an ambiguity error.
+      expect(both.status, `${method} ${path}`).toBe(path === '/mcp' ? 401 : 400);
+    }
+  });
+
+  it('/mcp is default-deny: 401 with a Bearer challenge for missing, malformed and cookie credentials, never public', async () => {
+    expect(EXPECTED_PUBLIC.some((r) => r.includes('/mcp'))).toBe(false);
+    for (const extra of [{}, { authorization: 'Bearer not-an-api-key' }, { cookie: 'seshat_session=x' }, { authorization: 'Bearer x', cookie: 'seshat_session=x' }]) {
+      for (const method of ['POST', 'GET', 'DELETE']) {
+        const res = await call(method, '/mcp', extra);
+        await res.text();
+        expect(res.status, `${method} ${JSON.stringify(extra)}`).toBe(401);
+        expect(res.headers.get('www-authenticate')).toBe('Bearer');
+      }
     }
   });
 
