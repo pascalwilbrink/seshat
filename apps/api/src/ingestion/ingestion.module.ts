@@ -22,7 +22,7 @@ import { PlainTextIngestor } from './plain-text.ingestor.js';
 @Module({
   imports: [AuthModule, FilesModule],
   controllers: [IngestionController],
-  exports: [EMBEDDING_SERVICE],
+  exports: [EMBEDDING_SERVICE, ChunksService],
   providers: [
     ChunksService,
     ReindexService,

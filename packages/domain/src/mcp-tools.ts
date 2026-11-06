@@ -19,10 +19,21 @@ export interface McpToolCatalogEntry {
 }
 
 /**
- * The production tool catalog: tool name to kind and required permissions. The transport job ships it empty; each
- * tool job adds its entries here (and registers the tool in the API registry with the same requirement).
+ * The production tool catalog: tool name to kind and required permissions. Each tool job adds its entries here (and registers the tool in the API registry with the same requirement).
  */
-export const MCP_TOOL_CATALOG = {} as const satisfies Record<string, McpToolCatalogEntry>;
+export const MCP_TOOL_CATALOG = {
+  list_files: { kind: 'read', requires: { allOf: ['files:read'] } },
+  get_file: { kind: 'read', requires: { allOf: ['files:read'] } },
+  get_file_chunks: { kind: 'read', requires: { allOf: ['files:read'] } },
+  list_collections: { kind: 'read', requires: { allOf: ['collections:read'] } },
+  list_tags: { kind: 'read', requires: { anyOf: ['files:read', 'memories:read'] } },
+  // Search tools: `search` plus at least one read permission; the read permissions of the requested types are enforced per call.
+  search_knowledge: { kind: 'read', requires: { allOf: ['search'], anyOf: ['files:read', 'memories:read'] } },
+  get_context: { kind: 'read', requires: { allOf: ['search'], anyOf: ['files:read', 'memories:read'] } },
+  recall: { kind: 'read', requires: { allOf: ['search', 'memories:read'] } },
+  list_memories: { kind: 'read', requires: { allOf: ['memories:read'] } },
+  get_related_memories: { kind: 'read', requires: { allOf: ['search', 'memories:read'] } },
+} as const satisfies Record<string, McpToolCatalogEntry>;
 
 export type McpToolName = keyof typeof MCP_TOOL_CATALOG;
 
