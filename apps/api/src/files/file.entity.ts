@@ -18,6 +18,13 @@ const bigintAsNumber = { to: (v: number) => v, from: (v: string | number) => Num
 @Check('CK_files_size_bytes', '"size_bytes" >= 0')
 @Check('CK_files_sha256_format', `"sha256" ~ '^[0-9a-f]{64}$'`)
 @Check('CK_files_chunk_count', '"chunk_count" >= 0')
+@Check('CK_files_created_by_kind', `"created_by_kind" IS NULL OR "created_by_kind" IN ('admin', 'api_key')`)
+@Check(
+  'CK_files_created_by_consistency',
+  `("created_by_kind" IS NULL AND "created_by_key_id" IS NULL AND "created_by_key_name" IS NULL AND "client_name" IS NULL AND "client_version" IS NULL)
+      OR ("created_by_kind" = 'admin' AND "created_by_key_id" IS NULL AND "created_by_key_name" IS NULL)
+      OR ("created_by_kind" = 'api_key' AND "created_by_key_id" IS NOT NULL AND "created_by_key_name" IS NOT NULL)`,
+)
 @Check('CK_files_ingestion_status', `"ingestion_status" IN ('pending', 'processing', 'indexed', 'failed')`)
 @Unique('UQ_files_id_scope_key', ['id', 'scopeKey'])
 @Unique('UQ_files_storage_key', ['storageKey'])
@@ -75,6 +82,22 @@ export class FileRecord extends ScopedEntity {
   /** Number of chunks currently stored for this file. */
   @Column({ name: 'chunk_count', type: 'integer', default: 0 })
   chunkCount!: number;
+
+  /** Provenance: a server-written snapshot (migration `AddFileProvenance`), immutable, null for files that predate it. */
+  @Column({ name: 'created_by_kind', type: 'varchar', length: 16, nullable: true })
+  createdByKind!: 'admin' | 'api_key' | null;
+
+  @Column({ name: 'created_by_key_id', type: 'uuid', nullable: true })
+  createdByKeyId!: string | null;
+
+  @Column({ name: 'created_by_key_name', type: 'varchar', length: 100, nullable: true })
+  createdByKeyName!: string | null;
+
+  @Column({ name: 'client_name', type: 'varchar', length: 200, nullable: true })
+  clientName!: string | null;
+
+  @Column({ name: 'client_version', type: 'varchar', length: 100, nullable: true })
+  clientVersion!: string | null;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamp with time zone' })
   createdAt!: Date;

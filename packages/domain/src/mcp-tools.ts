@@ -33,6 +33,13 @@ export const MCP_TOOL_CATALOG = {
   recall: { kind: 'read', requires: { allOf: ['search', 'memories:read'] } },
   list_memories: { kind: 'read', requires: { allOf: ['memories:read'] } },
   get_related_memories: { kind: 'read', requires: { allOf: ['search', 'memories:read'] } },
+
+  // Writing tools: they act only in the key's Workspace and never accept a scope or a Global option.
+  upload_file: { kind: 'write', requires: { allOf: ['files:write'] } },
+  delete_file: { kind: 'destructive', requires: { allOf: ['files:delete'] } },
+  remember: { kind: 'write', requires: { allOf: ['memories:write'] } },
+  update_memory: { kind: 'write', requires: { allOf: ['memories:write'] } },
+  forget: { kind: 'destructive', requires: { allOf: ['memories:delete'] } },
 } as const satisfies Record<string, McpToolCatalogEntry>;
 
 export type McpToolName = keyof typeof MCP_TOOL_CATALOG;

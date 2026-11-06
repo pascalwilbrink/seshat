@@ -1,7 +1,7 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
-import type { Readable } from 'node:stream';
-import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Readable } from 'node:stream';
+import { Inject, Injectable, Logger, NotFoundException, PayloadTooLargeException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { getDataSourceToken } from '@nestjs/typeorm';
 import type { DataSource, EntityManager } from 'typeorm';
@@ -17,9 +17,20 @@ import { type FileDto, type FileRow, type UpdateFileInput, toFileDto } from './f
 import { FILE_DELETED_EVENT, FILE_UPLOADED_EVENT, type FileUploadedEvent } from './file.events.js';
 import { extensionOf, sanitizeFileName, sanitizeMimeType } from './file-name.js';
 import { type FileListPage, encodeCursor, parseFileListQuery } from './file-list-query.js';
-import { receiveUpload } from './upload-reader.js';
+import { buildMemoryProvenance, type McpClientContext } from '../memories/memory-provenance.js';
+import { type ReceivedUpload, receiveUpload } from './upload-reader.js';
 
-const FILE_COLUMNS_F = ['id', 'scope', 'workspace_id', 'name', 'extension', 'mime_type', 'size_bytes', 'sha256', 'collection_id', 'ingestion_status', 'ingestion_error', 'indexed_at', 'chunk_count', 'created_at', 'updated_at']
+/** A complete upload held in memory (MCP tools). `text` has already been encoded; the caller enforces nothing but the cap here. */
+export interface BufferUploadInput {
+  name: string;
+  mimeType: string;
+  content: Buffer;
+  collectionId?: string | null;
+  tags?: string[];
+}
+
+
+const FILE_COLUMNS_F = ['id', 'scope', 'workspace_id', 'name', 'extension', 'mime_type', 'size_bytes', 'sha256', 'collection_id', 'ingestion_status', 'ingestion_error', 'indexed_at', 'chunk_count', 'created_by_kind', 'created_by_key_id', 'created_by_key_name', 'client_name', 'client_version', 'created_at', 'updated_at']
   .map((c) => `f."${c}"`)
   .join(', ');
 
@@ -48,26 +59,67 @@ export class FilesService {
     @Inject(APP_CONFIG) private readonly config: Pick<AppConfig, 'maxUploadBytes'>,
   ) {}
 
+  /** REST multipart upload: authorizes before the body is read, then runs the shared core. */
   async upload(principal: Principal, scope: ScopeRef, req: IncomingMessage): Promise<FileDto> {
     // Before the body is touched, stored or even looked at.
     this.authorization.assertCan(principal, 'file.upload', scope);
     await this.assertScopeExists(scope);
+    return this.persistUpload(principal, scope, null, (key) =>
+      receiveUpload(req, { maxBytes: this.config.maxUploadBytes, store: (stream) => this.storage.put(key, stream) }),
+    );
+  }
 
+  /**
+   * MCP upload of a complete in-memory payload (`maxBytes` is the MCP cap). Same authorization, validation, storage
+   * layout, cleanup and `file.uploaded` event as the multipart route, through the same core. Above the cap nothing is
+   * stored (413).
+   */
+  async uploadBuffer(principal: Principal, scope: ScopeRef, input: BufferUploadInput, client: McpClientContext | null, maxBytes: number): Promise<FileDto> {
+    this.authorization.assertCan(principal, 'file.upload', scope);
+    await this.assertScopeExists(scope);
+    if (input.content.length > maxBytes) throw new PayloadTooLargeException('Payload too large');
+    return this.persistUpload(principal, scope, client, async (key) => {
+      await this.storage.put(key, Readable.from([input.content]));
+      return {
+        filename: input.name,
+        mimeType: input.mimeType,
+        size: input.content.length,
+        sha256: createHash('sha256').update(input.content).digest('hex'),
+        collectionId: input.collectionId ?? undefined,
+        tags: input.tags ?? [],
+      };
+    });
+  }
+
+  /**
+   * The shared upload core. `receive` stores the original under the generated key and reports its size and hash; then
+   * the row (with server-owned provenance), the optional same-scope Collection and the tag assignments are committed in
+   * one transaction. Only after the commit is `file.uploaded` emitted. If anything fails, the stored object is removed
+   * (a failing removal is logged by file id and never replaces the original error).
+   */
+  private async persistUpload(
+    principal: Principal,
+    scope: ScopeRef,
+    client: McpClientContext | null,
+    receive: (key: string) => Promise<ReceivedUpload>,
+  ): Promise<FileDto> {
     const id = randomUUID();
     const key = originalObjectKey(scope, id);
     try {
-      const received = await receiveUpload(req, {
-        maxBytes: this.config.maxUploadBytes,
-        store: (stream) => this.storage.put(key, stream),
-      });
+      const received = await receive(key);
       const name = sanitizeFileName(received.filename);
+      const provenance = buildMemoryProvenance(principal, client);
       const dto = await this.dataSource.transaction(async (manager) => {
         const collectionId = await this.collections.resolveMembership(manager, scope, received.collectionId || null);
         const cols = scopeColumns(scope);
         await manager.query(
-          `INSERT INTO "files" ("id", "scope", "workspace_id", "name", "extension", "mime_type", "size_bytes", "sha256", "storage_key", "collection_id")
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-          [id, cols.scope, cols.workspaceId, name, extensionOf(name), sanitizeMimeType(received.mimeType), received.size, received.sha256, key, collectionId],
+          `INSERT INTO "files" ("id", "scope", "workspace_id", "name", "extension", "mime_type", "size_bytes", "sha256", "storage_key", "collection_id",
+             "created_by_kind", "created_by_key_id", "created_by_key_name", "client_name", "client_version")
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+          [
+            id, cols.scope, cols.workspaceId, name, extensionOf(name), sanitizeMimeType(received.mimeType), received.size, received.sha256, key, collectionId,
+            provenance.createdByKind, provenance.createdByKeyId, provenance.createdByKeyName, provenance.clientName, provenance.clientVersion,
+          ],
         );
         const tagNames = await this.tags.replaceFileTags(manager, scope, id, received.tags);
         return this.load(manager, scope, id, tagNames);
@@ -263,7 +315,7 @@ export class FilesService {
 
   private async load(manager: EntityManager, scope: ScopeRef, id: string, tagNames: string[]): Promise<FileDto> {
     const rows = (await manager.query(
-      `SELECT "id", "scope", "workspace_id", "name", "extension", "mime_type", "size_bytes", "sha256", "collection_id", "ingestion_status", "ingestion_error", "indexed_at", "chunk_count", "created_at", "updated_at"
+      `SELECT "id", "scope", "workspace_id", "name", "extension", "mime_type", "size_bytes", "sha256", "collection_id", "ingestion_status", "ingestion_error", "indexed_at", "chunk_count", "created_by_kind", "created_by_key_id", "created_by_key_name", "client_name", "client_version", "created_at", "updated_at"
        FROM "files" WHERE "id" = $1 AND "scope_key" = $2`,
       [id, scopeKeyOf(scope)],
     )) as FileRow[];

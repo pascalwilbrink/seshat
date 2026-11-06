@@ -21,6 +21,11 @@ export interface FileDto {
   indexedAt: string | null;
   /** Number of chunks stored for the file. */
   chunkCount: number;
+  /** Server-owned provenance; `createdBy` is null for files that predate it. Never settable by a client. */
+  provenance: {
+    createdBy: { kind: 'admin' | 'api_key'; keyId: string | null; keyName: string | null } | null;
+    client: { name: string; version: string | null } | null;
+  };
   createdAt: string;
   updatedAt: string;
 }
@@ -39,6 +44,11 @@ export interface FileRow {
   ingestion_error: string | null;
   indexed_at: Date | string | null;
   chunk_count: number | string;
+  created_by_kind: 'admin' | 'api_key' | null;
+  created_by_key_id: string | null;
+  created_by_key_name: string | null;
+  client_name: string | null;
+  client_version: string | null;
   created_at: Date | string;
   updated_at: Date | string;
 }
@@ -59,6 +69,12 @@ export function toFileDto(r: FileRow, tags: string[]): FileDto {
     ingestionError: r.ingestion_error ?? null,
     indexedAt: r.indexed_at ? new Date(r.indexed_at).toISOString() : null,
     chunkCount: Number(r.chunk_count ?? 0),
+    provenance: {
+      createdBy: r.created_by_kind
+        ? { kind: r.created_by_kind, keyId: r.created_by_key_id ?? null, keyName: r.created_by_key_name ?? null }
+        : null,
+      client: r.client_name ? { name: r.client_name, version: r.client_version ?? null } : null,
+    },
     createdAt: new Date(r.created_at).toISOString(),
     updatedAt: new Date(r.updated_at).toISOString(),
   };

@@ -40,6 +40,7 @@ describeIntegration('migrations (real PostgreSQL)', () => {
       'CreateMemories1762900000000',
       'AddMemoryEmbeddingGeneration1763000000000',
       'AddKeywordSearchVectors1763100000000',
+      'AddFileProvenance1763200000000',
     ]);
   });
 
@@ -56,6 +57,7 @@ describeIntegration('migrations (real PostgreSQL)', () => {
       'CreateMemories1762900000000',
       'AddMemoryEmbeddingGeneration1763000000000',
       'AddKeywordSearchVectors1763100000000',
+      'AddFileProvenance1763200000000',
     ]);
     expect(await vectorInstalled()).toBe(true);
 
@@ -72,7 +74,7 @@ describeIntegration('migrations (real PostgreSQL)', () => {
   });
 
   it('down drops memories, files tables, api_keys, then workspaces, then the extension; re-up succeeds', async () => {
-    for (let i = 0; i < 8; i += 1) await ds.undoLastMigration({ transaction: 'each' });
+    for (let i = 0; i < 9; i += 1) await ds.undoLastMigration({ transaction: 'each' });
     const tables = await iso.query(
       `SELECT table_name FROM information_schema.tables WHERE table_schema = '${iso.schema}'`,
     );
@@ -83,7 +85,7 @@ describeIntegration('migrations (real PostgreSQL)', () => {
     expect(await vectorInstalled()).toBe(false);
 
     const again = await ds.runMigrations({ transaction: 'each' });
-    expect(again).toHaveLength(9);
+    expect(again).toHaveLength(10);
     expect(await vectorInstalled()).toBe(true);
   });
 
