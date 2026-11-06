@@ -35,11 +35,11 @@ export const NAV_GROUPS: readonly NavGroup[] = [
  */
 export const NAV_AREAS: readonly NavArea[] = [
   { id: 'overview', label: 'Overview', group: 'knowledge', icon: LayoutDashboard, route: 'overview', scopes: ['global', 'workspace'], available: true },
-  { id: 'files', label: 'Files', group: 'knowledge', icon: FileText, route: 'files', scopes: ['global', 'workspace'], available: false },
-  { id: 'collections', label: 'Collections', group: 'knowledge', icon: FolderOpen, route: 'collections', scopes: ['global', 'workspace'], available: false },
+  { id: 'files', label: 'Files', group: 'knowledge', icon: FileText, route: 'files', scopes: ['global', 'workspace'], available: true },
+  { id: 'collections', label: 'Collections', group: 'knowledge', icon: FolderOpen, route: 'collections', scopes: ['global', 'workspace'], available: true },
   { id: 'search', label: 'Search', group: 'knowledge', icon: Search, route: 'search', scopes: ['global', 'workspace'], available: true },
   { id: 'memories', label: 'Memories', group: 'knowledge', icon: Brain, route: 'memories', scopes: ['global', 'workspace'], available: true },
-  { id: 'api-keys', label: 'API Keys', group: 'developer', icon: KeyRound, route: 'api-keys', scopes: ['workspace'], available: false },
+  { id: 'api-keys', label: 'API Keys', group: 'developer', icon: KeyRound, route: 'api-keys', scopes: ['workspace'], available: true },
   { id: 'mcp', label: 'MCP', group: 'developer', icon: Plug, route: 'mcp', scopes: ['workspace'], available: true },
   { id: 'settings', label: 'Settings', group: 'system', icon: Settings, route: 'settings', scopes: ['global', 'workspace'], available: true },
 ];

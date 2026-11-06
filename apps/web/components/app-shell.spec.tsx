@@ -39,12 +39,14 @@ async function openScope(user = userEvent.setup()) {
 }
 
 describe('navigation', () => {
-  it('shows Overview, Search, Memories and Settings, grouped, in Global', () => {
+  it('shows the Knowledge areas and Settings, grouped, in Global', () => {
     withWorkspaces();
     render(<AppShell username="admin">x</AppShell>);
     const nav = screen.getByRole('navigation', { name: 'Sections' });
     expect(within(nav).getAllByRole('link').map((l) => [l.textContent, l.getAttribute('href')])).toEqual([
       ['Overview', '/global/overview'],
+      ['Files', '/global/files'],
+      ['Collections', '/global/collections'],
       ['Search', '/global/search'],
       ['Memories', '/global/memories'],
       ['Settings', '/global/settings'],
@@ -62,12 +64,14 @@ describe('navigation', () => {
     expect(within(nav).getByRole('link', { name: 'Settings' })).toHaveAttribute('href', '/w/alpha/settings');
     expect(within(nav).getByRole('link', { name: 'Settings' })).toHaveAttribute('aria-current', 'page');
   });
-  it('does not list direct-route areas (Files, Collections, API Keys) yet keeps their pages in the shell', () => {
+  it('lists Files, Collections and API Keys in a Workspace and marks API Keys current on its page', () => {
     withWorkspaces();
     pathname = '/w/alpha/api-keys';
     render(<AppShell username="admin">x</AppShell>);
     const nav = screen.getByRole('navigation', { name: 'Sections' });
-    for (const n of ['Files', 'Collections', 'API Keys']) expect(within(nav).queryByRole('link', { name: n })).not.toBeInTheDocument();
+    expect(within(nav).getByRole('link', { name: 'Files' })).toHaveAttribute('href', '/w/alpha/files');
+    expect(within(nav).getByRole('link', { name: 'Collections' })).toHaveAttribute('href', '/w/alpha/collections');
+    expect(within(nav).getByRole('link', { name: 'API Keys' })).toHaveAttribute('aria-current', 'page');
     expect(screen.getByText('x')).toBeInTheDocument();
     expect(within(screen.getByRole('navigation', { name: 'Breadcrumb' })).getByText('API Keys')).toBeInTheDocument();
   });
@@ -122,11 +126,11 @@ describe('scope dropdown', () => {
     expect(await within(menu).findByRole('menuitem', { name: 'Alpha' })).toHaveAttribute('href', '/w/alpha/settings');
     expect(within(menu).getByRole('menuitem', { name: 'Global' })).toHaveAttribute('aria-current', 'page');
   });
-  it('falls back to Overview for an unavailable or Workspace-only area', async () => {
+  it('keeps Files when switching scope from the Files page', async () => {
     withWorkspaces();
     pathname = '/global/files';
     const first = await openScope();
-    expect(await within(first.menu).findByRole('menuitem', { name: 'Alpha' })).toHaveAttribute('href', '/w/alpha/overview');
+    expect(await within(first.menu).findByRole('menuitem', { name: 'Alpha' })).toHaveAttribute('href', '/w/alpha/files');
     first.user.keyboard('{Escape}');
   });
   it('never links to a Global API Keys page when switching from a Workspace key page', async () => {
