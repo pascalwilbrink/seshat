@@ -103,6 +103,7 @@ export const ACTION_CATALOG = {
   'usage.memory': ADMIN,
   'usage.top': ADMIN,
   'usage.unused': ADMIN,
+  'usage.overview': ADMIN,
   // Future: search is a read operation.
   'search.query': perm('read', 'search'),
 } as const satisfies Record<string, ActionRequirement>;
