@@ -270,3 +270,46 @@ export interface ResourceUsageDto {
   lastAccessedAt: string | null;
   daily: { day: string; total: number; byChannel: Record<UsageChannel, number>; byKind: Record<UsageAccessKind, number> }[];
 }
+
+/** `GET .../mcp-calls`: safe call rows (ids, key-name snapshot, client, tool, outcome, sizes); never queries or content. */
+export interface McpCallDto {
+  id: string;
+  occurredAt: string;
+  /** Present on every row of the Global list. */
+  workspace?: { id: string; slug: string; name: string };
+  keyId: string;
+  /** Name of the key when the call was made; survives revocation and deletion. */
+  keyName: string;
+  clientName: string | null;
+  clientVersion: string | null;
+  tool: string;
+  outcome: McpOutcome;
+  durationMs: number;
+  resultChars: number;
+  truncated: boolean;
+}
+
+export interface McpCallListDto {
+  scope: 'global' | 'workspace';
+  workspaceId: string | null;
+  items: McpCallDto[];
+  nextCursor: string | null;
+  hasMore: boolean;
+  limit: number;
+}
+
+export interface McpCallResourceDto {
+  kind: 'file' | 'memory';
+  id: string;
+  action: string;
+  scope: 'global' | 'workspace';
+  workspaceId: string | null;
+  /** The resource no longer exists: show only its id. */
+  deleted: boolean;
+}
+
+export interface McpCallDetailDto extends Omit<McpCallDto, 'workspace'> {
+  workspace: { id: string; slug: string; name: string };
+  argsSummary: Record<string, unknown>;
+  resources: McpCallResourceDto[];
+}
