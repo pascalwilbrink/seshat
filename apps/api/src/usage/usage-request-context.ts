@@ -4,6 +4,11 @@ import type { ScopeRef } from '../scopes/scope-ref.js';
 import type { AccessKind, McpTouchAction, UsageChannel, UsageResourceKind } from './usage.constants.js';
 import { UsageRecorderService } from './usage-recorder.service.js';
 
+/** Identity of a resource inside one request, independent of access kind. */
+export function usageKey(kind: UsageResourceKind, id: string): string {
+  return `${kind}|${id}`;
+}
+
 export interface StagedAccess {
   resourceKind: UsageResourceKind;
   resourceId: string;
@@ -56,6 +61,17 @@ export class UsageRequestContext {
     return this.stagedAccesses();
   }
 
+  /**
+   * Keeps only the staged `retrieved` accesses whose resource is in `keep` (keys from `usageKey`). Used when a
+   * transport emits fewer results than the service returned (MCP result capping). `read` accesses are untouched.
+   */
+  retainRetrieved(keep: ReadonlySet<string>): void {
+    if (this.done) return;
+    for (const [key, a] of this.staged) {
+      if (a.accessKind === 'retrieved' && !keep.has(usageKey(a.resourceKind, a.resourceId))) this.staged.delete(key);
+    }
+  }
+
   /** Failed, denied or aborted request: nothing is recorded. */
   discard(): void {
     this.done = true;
@@ -93,6 +109,15 @@ export class UsageCollector {
   touch(touched: TouchedId): void {
     try {
       this.als.getStore()?.touch(touched);
+    } catch {
+      /* best effort */
+    }
+  }
+
+  /** Narrows staged `retrieved` accesses to what was actually emitted. Never throws. */
+  retainRetrieved(keep: ReadonlySet<string>, ctx: UsageRequestContext | undefined = this.als.getStore()): void {
+    try {
+      ctx?.retainRetrieved(keep);
     } catch {
       /* best effort */
     }

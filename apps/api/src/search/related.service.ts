@@ -1,6 +1,8 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { getDataSourceToken } from '@nestjs/typeorm';
 import type { DataSource } from 'typeorm';
+import { UsageCollector } from '../usage/usage-request-context.js';
+import { stageRetrieved } from '../usage/usage-staging.js';
 import { AuthorizationService } from '../auth/authorization.service.js';
 import type { Principal } from '../auth/principal.js';
 import { isUuid, type ScopeRef } from '../scopes/scope-ref.js';
@@ -23,6 +25,7 @@ export class RelatedMemoriesService {
     @Inject(AuthorizationService) private readonly authorization: AuthorizationService,
     @Inject(getDataSourceToken()) private readonly dataSource: DataSource,
     @Inject(RetrievalService) private readonly retrieval: RetrievalService,
+    @Optional() @Inject(UsageCollector) private readonly usage?: UsageCollector,
   ) {}
 
   async related(
@@ -44,6 +47,8 @@ export class RelatedMemoriesService {
     return this.dataSource.transaction(async (m) => {
       const seed = await this.repo.loadSeedVector(m, routeScope, seedId.toLowerCase());
       if (!seed) throw new NotFoundException('Not Found');
+      // The seed was requested by id: a read, even when it has no embedding and nothing is returned.
+      this.usage?.stage({ resourceKind: 'memory', resourceId: seed.id, scope, accessKind: 'read' });
       if (seed.vector === null) return { results: [] };
 
       const wanted = request.limit;
@@ -59,6 +64,7 @@ export class RelatedMemoriesService {
         const row = loaded.get(r.id);
         if (row) results.push(toRelatedMemoryResult({ ...row, distance: r.distance }));
       }
+      stageRetrieved(this.usage, results);
       return { results };
     });
   }
