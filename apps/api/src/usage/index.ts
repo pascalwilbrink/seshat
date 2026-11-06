@@ -7,3 +7,5 @@ export { UsageRecorderService, USAGE_BUFFER_LIMITS, USAGE_FLUSH_INTERVAL_MS, typ
 export { UsageCollector, UsageRequestContext, usageKey } from './usage-request-context.js';
 export { UsageAccessInterceptor, channelOf } from './usage-access.interceptor.js';
 export { stageRetrieved, retrievedRefsOf, type RetrievedRef } from './usage-staging.js';
+export { UsageService } from './usage.service.js';
+export { accessSummaries, type AccessSummary } from './usage-summaries.js';

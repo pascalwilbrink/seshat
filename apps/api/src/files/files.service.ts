@@ -13,6 +13,7 @@ import { APP_CONFIG, type AppConfig } from '../config/app-config.js';
 import { type ScopeRef, isUuid, scopeColumns } from '../scopes/scope-ref.js';
 import { FILE_STORAGE, type FileStorage, StorageObjectNotFoundError, originalObjectKey } from '../storage/file-storage.js';
 import { StorageCleanupService } from '../storage/storage-cleanup.service.js';
+import { accessSummaries } from '../usage/usage-summaries.js';
 import { TagsService, scopeKeyOf } from '../tags/tags.service.js';
 import { type FileDto, type FileRow, type UpdateFileInput, toFileDto } from './file.dto.js';
 import { FILE_DELETED_EVENT, FILE_UPLOADED_EVENT, type FileUploadedEvent } from './file.events.js';
@@ -244,8 +245,14 @@ export class FilesService {
     const page = hasMore ? rows.slice(0, q.limit) : rows;
     const tagsByFile = await this.tagNamesFor(scopeKey, page.map((r) => r.id));
     const last = page[page.length - 1];
+    // Admin only: batched usage projection; keys get neither property (not even null).
+    const usage = principal.kind === 'admin' ? await accessSummaries(this.dataSource, 'file', scopeKey, page.map((r) => r.id)) : null;
     return {
-      items: page.map((r) => toFileDto(r, tagsByFile.get(r.id) ?? [])),
+      items: page.map((r) => {
+        const dto = toFileDto(r, tagsByFile.get(r.id) ?? []);
+        const u = usage?.get(r.id);
+        return u ? { ...dto, accessCount30d: u.accessCount30d, lastAccessedAt: u.lastAccessedAt } : dto;
+      }),
       nextCursor: hasMore && last ? encodeCursor({ createdAt: last.cursor_ts, id: last.id }) : null,
       hasMore,
       limit: q.limit,
