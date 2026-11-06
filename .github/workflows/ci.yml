@@ -55,3 +55,46 @@ jobs:
 
       # Belt and braces: prove the migration, vector and health suites really executed (not skipped).
       - run: node apps/api/scripts/verify-integration-results.mjs "$RUNNER_TEMP/vitest-results.json"
+
+  # Builds the combined image on the runner (never pushed anywhere) and smoke-tests the real app profile.
+  image-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      # Fixed names so the always-run cleanup can find the resources even if the script is killed.
+      SMOKE_PROJECT: seshat-ci-smoke
+      SMOKE_DIR: ${{ runner.temp }}/seshat-smoke
+      IMAGE: seshat-ci:build
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # Local build only: no login, no push, no registry cache.
+      - name: Build image
+        run: docker build -t "$IMAGE" .
+
+      # Startup-failure, supervisor, migration and image-content checks against the built image (throwaway secrets).
+      - name: Verify image and startup failures
+        run: node docker/verify-image.mjs
+        timeout-minutes: 10
+
+      # Isolated Compose project: its db publishes no host port, so it cannot clash with other databases.
+      - name: Smoke test (health, login page, API proxy, /mcp 401)
+        run: node docker/smoke.mjs
+        timeout-minutes: 10
+
+      - name: Cleanup
+        if: always()
+        run: |
+          ids=$(docker ps -aq --filter "label=com.docker.compose.project=$SMOKE_PROJECT")
+          [ -z "$ids" ] || docker rm -f -v $ids
+          vols=$(docker volume ls -q --filter "label=com.docker.compose.project=$SMOKE_PROJECT")
+          [ -z "$vols" ] || docker volume rm -f $vols
+          docker network ls -q --filter "label=com.docker.compose.project=$SMOKE_PROJECT" | xargs -r docker network rm || true
+          ids=$(docker ps -aq --filter "name=seshat-verify-")
+          [ -z "$ids" ] || docker rm -f -v $ids
+          docker network ls -q --filter "name=seshat-verify-" | xargs -r docker network rm || true
+          rm -rf "$SMOKE_DIR"
