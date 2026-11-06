@@ -12,7 +12,7 @@ import {
   type TagDto,
   type WorkspaceDto,
 } from '@/lib/api-types';
-import { formatDate, formatSize } from '@/lib/files';
+import { formatAccessCount, formatDate, formatSize } from '@/lib/files';
 import { readFormError } from '@/lib/form-errors';
 import { GLOBAL_OVERVIEW_PATH, type Scope } from '@/lib/scope';
 import type { FileFocus } from '@/lib/search';
@@ -25,6 +25,7 @@ import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { LastAccessed } from './resource-usage';
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 const NETWORK = 'Could not reach the server. Check your connection and try again.';
@@ -383,6 +384,8 @@ function FilesPanel({ base, label, focus }: { base: string; label: string; focus
                 <TableHead scope="col">Tags</TableHead>
                 <TableHead scope="col">Status</TableHead>
                 <TableHead scope="col">Uploaded</TableHead>
+                <TableHead scope="col">Accesses (30 d)</TableHead>
+                <TableHead scope="col">Last accessed</TableHead>
                 <TableHead scope="col">Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -403,6 +406,8 @@ function FilesPanel({ base, label, focus }: { base: string; label: string; focus
                     )}
                   </TableCell>
                   <TableCell>{formatDate(f.createdAt)}</TableCell>
+                  <TableCell className="tabular-nums">{formatAccessCount(f.accessCount30d)}</TableCell>
+                  <TableCell><LastAccessed value={f.lastAccessedAt} /></TableCell>
                   <TableCell>
                     <a className="rounded-sm text-foreground underline underline-offset-4 hover:no-underline focus-visible:outline-2 focus-visible:outline-ring" href={`${filesBase}/${encodeURIComponent(f.id)}/download`} download>
                       Download<span className="sr-only"> {f.name}</span>

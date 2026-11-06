@@ -8,6 +8,7 @@ vi.mock('@/lib/api-client', () => ({ apiFetch: (p: string, i?: RequestInit) => f
 import { FilesView, POLL_INTERVAL_MS } from './files-view';
 import { WorkspacesProvider } from './workspaces-provider';
 import { json, ws } from './shell.fixture';
+import { usageFixture } from './resource-usage.fixture';
 import type { ChunkDto, FileDto } from '@/lib/api-types';
 import { handleUnauthorized } from '@/lib/api-client';
 import type { Scope } from '@/lib/scope';
@@ -106,6 +107,7 @@ function server(files: Record<string, FileDto[]>, extra: Partial<Server> = {}): 
     const method = init?.method ?? 'GET';
     s.seen.push(`${method} ${url}`);
     if (url === '/api/global/workspaces') return json([alpha, beta]);
+    if (/\/files\/[^/?]+\/usage\?/.test(url)) return json(usageFixture());
     const m = /^(\/api\/(?:global|workspaces\/[^/]+))\/(files|collections|tags)(?:\/([^/?]+))?(?:\/(chunks|reindex))?(?:\?(.*))?$/.exec(url);
     if (!m) throw new Error(`Unexpected fetch ${method} ${url}`);
     const [, base, kind, id, sub, qs] = m;
@@ -293,6 +295,19 @@ describe('FilesView detail and delete', () => {
     await userEvent.clear(tags);
     await userEvent.click(within(form).getByRole('button', { name: 'Save changes' }));
     await waitFor(() => expect(s.files[G][0].tags).toEqual([]));
+  });
+
+  it('shows 30-day access counts and last access, with zero and never states', async () => {
+    server({ [G]: [file({ id: 'a', name: 'used.md', accessCount30d: 1234, lastAccessedAt: '2026-11-06T09:00:00.000Z' }), file({ id: 'b', name: 'idle.md', accessCount30d: 0, lastAccessedAt: null })] });
+    renderView({ kind: 'global' });
+    expect(await screen.findByRole('columnheader', { name: 'Accesses (30 d)' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Last accessed' })).toBeInTheDocument();
+    const used = screen.getByRole('rowheader', { name: 'used.md' }).closest('tr')!;
+    expect(within(used).getByText('1,234')).toBeInTheDocument();
+    expect(used.querySelector('time')).toHaveAttribute('datetime', '2026-11-06T09:00:00.000Z');
+    const idle = screen.getByRole('rowheader', { name: 'idle.md' }).closest('tr')!;
+    expect(within(idle).getByText('0')).toBeInTheDocument();
+    expect(within(idle).getByText('Never')).toBeInTheDocument();
   });
 
   it('validates an empty name locally and shows server errors', async () => {

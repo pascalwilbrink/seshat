@@ -7,6 +7,7 @@ import { formatDate } from '@/lib/files';
 import { readFormError } from '@/lib/form-errors';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from './confirm-dialog';
+import { ResourceUsage } from './resource-usage';
 import { MemoryForm, type MemoryFormResult } from './memory-form';
 import { EmbeddingBadge, MemoryStatusBadge, TypeBadge, provenanceText } from './memory-badges';
 
@@ -206,6 +207,7 @@ export function MemoryDetail({
         </p>
       )}
       {state.status === 'ready' && <DetailBody memory={state.memory} onSelect={onSelect} />}
+      {state.status === 'ready' && <ResourceUsage key={state.memory.id} base={base} id={state.memory.id} />}
       {state.status === 'ready' && state.memory.embeddingStatus === 'pending' && (
         <p role="status" className="mb-3 text-muted-foreground">
           {pollsExhausted ? 'Embedding is still pending.' : 'Embedding in progress; this updates automatically.'}
