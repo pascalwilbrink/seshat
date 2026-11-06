@@ -191,7 +191,7 @@ async function call(key: string, name: string, args: Record<string, unknown> = {
   return (await connect(key)).callTool({ name, arguments: args });
 }
 
-const ALL = Object.keys(MCP_TOOL_CATALOG).sort();
+const ALL = (Object.keys(MCP_TOOL_CATALOG) as (keyof typeof MCP_TOOL_CATALOG)[]).filter((n) => MCP_TOOL_CATALOG[n].kind === 'read').sort();
 
 describe('read tool listing', () => {
   it('registers exactly the catalog read tools, all read-only', async () => {
