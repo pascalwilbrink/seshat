@@ -44,6 +44,8 @@ export interface EmittedResource {
 export interface ToolOutput {
   /** Resources shown by a search-like result, so usage counts only what survives result capping. */
   emitted?: EmittedResource[];
+  /** Files/Memories this call created, updated or deleted (ids only; recorded in call history, never counted as accesses). */
+  touched?: { resourceKind: 'file' | 'memory'; resourceId: string; action: 'created' | 'updated' | 'deleted' }[];
   /** Structured result (plain JSON). */
   structured: Record<string, unknown>;
   /** Text rendering; defaults to pretty JSON of `structured`. Retrieved content in it should use `wrapRetrieved`. */
@@ -91,4 +93,22 @@ export function renderedItem(item: unknown, indent = 4): string {
 /** A tool error result (`isError: true`) with a single short fixed message. */
 export function toolError(message: string): CallToolResult {
   return { isError: true, content: [{ type: 'text', text: message }] };
+}
+
+/**
+ * Result size for call history, in UTF-16 code units (JavaScript string length) of what the caller receives: the text
+ * of every content block plus the JSON of `structuredContent`. Errors count their message. The same rule applies to
+ * every outcome, so sizes are comparable across calls.
+ */
+export function measureResultChars(result: CallToolResult): number {
+  let total = 0;
+  for (const block of result.content ?? []) if (block.type === 'text') total += block.text.length;
+  if (result.structuredContent !== undefined) total += JSON.stringify(result.structuredContent).length;
+  return total;
+}
+
+/** Whether `toolResult` had to cap the text or replace the structured content for this output. */
+export function wasTruncated(output: ToolOutput, maxChars: number): boolean {
+  const text = output.text ?? JSON.stringify(output.structured, null, 2);
+  return text.length > maxChars || JSON.stringify(output.structured).length > maxChars;
 }
