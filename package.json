@@ -8,6 +8,7 @@
     "test:docker": "node --test docker/test/*.spec.mjs",
     "dev": "pnpm -r --parallel dev",
     "test:container": "node docker/verify-image.mjs",
-    "test:compose": "node docker/verify-compose.mjs"
+    "test:compose": "node docker/verify-compose.mjs",
+    "test:smoke": "node docker/smoke.mjs"
   }
 }
