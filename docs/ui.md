@@ -124,6 +124,26 @@ Some older views (`FormField`, the settings views, the Files, Collections and AP
 
 The toaster is mounted **once**, in `app/layout.tsx` (`Toaster` from `@/components/ui/sonner`). Never mount it in a page or component. Fire toasts with `toast.success(...)` / `toast.error(...)` from `sonner`.
 
+## Charts
+
+Recharts is the **only** chart library. Never add another one, and never import `recharts` outside the repo-owned wrappers: `components/ui/chart.tsx` (`ChartContainer`, `ChartLegend`, `ChartTooltipContent`, `ChartPatternDefs`) owns it, `@/components/chart-panel` (`ChartPanel`, `ChartDataTable`) frames every chart, and `@/components/usage-charts` holds the presentations. Series colours and helpers live in `@/lib/chart`.
+
+| Chart | Import | Use when |
+| --- | --- | --- |
+| `TimeSeriesChart kind="line"` | `@/components/usage-charts` | One or a few trends over days (calls per day). |
+| `TimeSeriesChart kind="stacked"` | `@/components/usage-charts` | Parts of a daily total (accesses by channel, calls by outcome). |
+| `TimeSeriesChart kind="bar"` | `@/components/usage-charts` | Side-by-side comparison of a few categories or days. |
+| `BarListChart` | `@/components/usage-charts` | A ranking, already sorted by the caller (top ten tools, top resources). |
+| `Sparkline` | `@/components/usage-charts` | A small trend inside a detail view (a 30-day series). It needs no axes. |
+
+Rules:
+
+- **Series tokens are stable.** Use the series keys in `SERIES_TOKENS` (`@/lib/chart`): channels `ui` = `primary`, `api` = `info`, `mcp` = `success`; outcomes `success`, `invalid_arguments`, `forbidden`, `not_found`, `unknown_tool`, `internal_error`. A series keeps its colour on every chart. A new series passes a `token` from the existing semantic tokens (`primary`, `info`, `success`, `warning`, `destructive`, `muted-foreground`); never a raw colour, never a new colour token for one chart.
+- **Colour is never the only signal.** Series also differ by fill pattern (solid, diagonal, dots, cross) or line dash, and the legend and tooltip repeat the pattern next to the label.
+- **Every chart has a title, a text summary and a data table.** The plot is `aria-hidden`; the summary (always visible, the panel's accessible description) and the table behind the "Show data table" button (`aria-expanded`, keyboard operable) carry the same numbers, formatted with `formatCount`. Pass `summary` only to improve the generated one.
+- **States.** `ChartPanel` renders the loading skeleton (`role="status"`), the empty state (all values zero or no rows) and a retryable `ErrorState` with a safe message. Pass real data only; no mock metrics.
+- **Layout and motion.** Charts are `min-w-0 max-w-full`, 224 px high (`h-56`), sized by the container, and must not scroll the page at 375 px; the table scrolls inside its own region. Animation is always off.
+
 ## Required page states
 
 Every page or data region handles all of these; none may be missing or a blank area:

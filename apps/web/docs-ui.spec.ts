@@ -21,6 +21,8 @@ const COMPONENTS: Record<string, { file: string; exports: string[] }> = {
   ConfirmDialog: { file: 'confirm-dialog', exports: ['ConfirmDialog'] },
   CodeSnippet: { file: 'code-snippet', exports: ['CodeSnippet'] },
   RelativeTime: { file: 'relative-time', exports: ['RelativeTime'] },
+  ChartPanel: { file: 'chart-panel', exports: ['ChartPanel', 'ChartDataTable'] },
+  UsageCharts: { file: 'usage-charts', exports: ['TimeSeriesChart', 'BarListChart', 'Sparkline'] },
 };
 
 describe('docs/ui.md stays consistent with the code', () => {
@@ -58,6 +60,16 @@ describe('docs/ui.md stays consistent with the code', () => {
 
   it('covers the six page patterns', () => {
     for (const h of ['### Files', '### Collections', '### Search', '### Memories', '### API Keys', '### MCP']) expect(guide).toContain(h);
+  });
+
+  it('has a Charts section matching the chart code', async () => {
+    const section = guide.slice(guide.indexOf('## Charts'), guide.indexOf('## Required page states'));
+    expect(section).toContain('Recharts');
+    for (const name of ['TimeSeriesChart', 'BarListChart', 'Sparkline', 'ChartPanel', 'SERIES_TOKENS', 'components/ui/chart.tsx']) expect(section, name).toContain(name);
+    const { SERIES_TOKENS } = await import('@/lib/chart');
+    for (const key of Object.keys(SERIES_TOKENS).filter((k) => !['read', 'retrieved', 'error'].includes(k))) expect(section, key).toContain(`\`${key}\``);
+    const pkg = JSON.parse(readFileSync(resolve(webRoot, 'package.json'), 'utf8')) as { dependencies: Record<string, string> };
+    expect(Object.keys(pkg.dependencies).filter((d) => /chart|d3|victory|nivo|visx|plotly/i.test(d))).toEqual(['recharts']);
   });
 
   it('is linked from AGENTS.md section 5 as binding', () => {
