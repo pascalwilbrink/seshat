@@ -13,16 +13,9 @@ import { UsageRetentionService } from './usage-retention.service.js';
 /** Usage insights storage (counters, MCP call history) and retention. Recording and API come in later modules. */
 @Global()
 @Module({
-<<<<<<< HEAD
   imports: [AuthModule],
   controllers: [UsageController],
   providers: [{ provide: APP_INTERCEPTOR, useClass: UsageAccessInterceptor }, UsageService, UsagePersistenceService, UsageRecorderService, UsageCollector, UsageRetentionService, UsagePruneWorker],
   exports: [UsageService, UsagePersistenceService, UsageRecorderService, UsageCollector, UsageRetentionService],
-=======
-  imports: [AuthModule],
-  controllers: [UsageController],
-  providers: [UsageService, UsagePersistenceService, UsageRecorderService, UsageCollector, UsageRetentionService, UsagePruneWorker],
-  exports: [UsageService, UsagePersistenceService, UsageRecorderService, UsageCollector, UsageRetentionService],
->>>>>>> a8231ee (Expose admin resource usage, top and unused APIs and list usage fields)
 })
 export class UsageModule {}
