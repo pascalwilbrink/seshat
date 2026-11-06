@@ -13,6 +13,7 @@ import {
   describeIntegration,
   type IsolatedSchema,
 } from './helpers/integration.js';
+import { migrationsFrom, revertThrough } from './helpers/migrations.js';
 
 /** AC-6 and AC-7 persistence: scope-safe Collections, shared Tags and file_tags, enforced by PostgreSQL itself. */
 describeIntegration('Files, Collections and Tags model (real PostgreSQL)', () => {
@@ -385,17 +386,13 @@ describeIntegration('Files, Collections and Tags model (real PostgreSQL)', () =>
         const tables = async () =>
           (await iso.query(`SELECT table_name FROM information_schema.tables WHERE table_schema = '${iso.schema}' ORDER BY table_name`)).map((t) => t.table_name);
         expect(await tables()).toEqual(expect.arrayContaining(['chunks', 'collections', 'file_tags', 'files', 'tags']));
-        await d.undoLastMigration({ transaction: 'each' }); // file provenance
-        await d.undoLastMigration({ transaction: 'each' }); // keyword vectors
-        await d.undoLastMigration({ transaction: 'each' }); // memory embedding generation
-        await d.undoLastMigration({ transaction: 'each' }); // memories
-        await d.undoLastMigration({ transaction: 'each' }); // chunks
-        await d.undoLastMigration({ transaction: 'each' }); // storage cleanup ledger
-        await d.undoLastMigration({ transaction: 'each' });
+        const MIGRATION = 'CreateFilesCollectionsTags1762600000000';
+        const expected = migrationsFrom(d, MIGRATION);
+        await revertThrough(d, MIGRATION);
         const after = await tables();
         for (const t of ['chunks', 'collections', 'file_tags', 'files', 'tags']) expect(after).not.toContain(t);
         expect(after).toContain('workspaces');
-        expect(await d.runMigrations({ transaction: 'each' })).toHaveLength(7);
+        expect((await d.runMigrations({ transaction: 'each' })).map((m) => m.name)).toEqual(expected);
       } finally {
         await d.destroy();
       }

@@ -7,6 +7,7 @@ import {
   describeIntegration,
   type IsolatedSchema,
 } from './helpers/integration.js';
+import { migrationNames, revertAfter } from './helpers/migrations.js';
 
 describeIntegration('migrations (real PostgreSQL)', () => {
   let iso: IsolatedSchema;
@@ -76,7 +77,8 @@ describeIntegration('migrations (real PostgreSQL)', () => {
   });
 
   it('down drops memories, files tables, api_keys, then workspaces, then the extension; re-up succeeds', async () => {
-    for (let i = 0; i < 10; i += 1) await ds.undoLastMigration({ transaction: 'each' });
+    // Everything except the first migration (the vector extension), by name, so new migrations never change this test.
+    await revertAfter(ds, 'EnableVectorExtension1762300000000');
     const tables = await iso.query(
       `SELECT table_name FROM information_schema.tables WHERE table_schema = '${iso.schema}'`,
     );
@@ -87,7 +89,7 @@ describeIntegration('migrations (real PostgreSQL)', () => {
     expect(await vectorInstalled()).toBe(false);
 
     const again = await ds.runMigrations({ transaction: 'each' });
-    expect(again).toHaveLength(11);
+    expect(again.map((m) => m.name)).toEqual(migrationNames(ds));
     expect(await vectorInstalled()).toBe(true);
   });
 
