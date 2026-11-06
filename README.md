@@ -7,10 +7,10 @@ search, and expose controlled access through an API and MCP.
 > **Status: early foundation.** Present: Postgres persistence, Workspace management, single-admin login and a
 > login-protected web shell with scoped Overview, Settings and API Keys pages, Workspace API keys with explicit
 > permissions, and Files on a local volume with optional Collections and flat Tags (Global and Workspace, API and web).
-> Ingestion, typed Memories and hybrid search with cited context are delivered; MCP is planned. See [Status](#status).
+> Ingestion, typed Memories and hybrid search with cited context and the MCP server are delivered. See [Status](#status).
 
 ## Core concepts
-Global, Workspaces, Files, Collections, Tags, Workspace API keys, ingestion, Memories and hybrid search exist today; MCP below is planned.
+Global, Workspaces, Files, Collections, Tags, Workspace API keys, ingestion, Memories and hybrid search and the MCP server exist today.
 
 - **Global** is a special scope for knowledge shared across the account. It is not a Workspace. Global
   resources are never available to a Workspace automatically: access must be granted explicitly.
@@ -62,7 +62,7 @@ Present:
 Also present: CI (build and tests with required integration tests, see [CI](#ci)).
 
 Planned (does not exist yet): recall tools, relationships between Memories beyond
-supersession, automatic extraction of Memories, ingestors for formats other than `txt` and `md`, the MCP server, other storage backends, a
+supersession, automatic extraction of Memories, ingestors for formats other than `txt` and `md`, other storage backends, a
 release/deploy pipeline, and a Dockerfile. The target is one application container plus one Postgres database. There is
 no single Docker image today.
 
@@ -173,7 +173,8 @@ default is shown with a notice. MCP clients connect to the API port directly, no
 - Each test works in its own uniquely named schema, which is dropped (with its connections) in teardown, also after a
   failure. The suites run serially for the shared extension.
 - CI always runs them: `REQUIRE_INTEGRATION_TESTS=true` turns a missing `TEST_DATABASE_URL` into a failure, and
-  `apps/api/scripts/verify-integration-results.mjs` checks that the integration suites actually executed. Do not set
+  `apps/api/scripts/verify-integration-results.mjs` checks that the required suites (migrations, vector column, health and
+  the MCP end-to-end suite) actually executed. Do not set
   `REQUIRE_INTEGRATION_TESTS` locally unless you want that failure.
 
 ### Sessions and the proxy
@@ -233,7 +234,7 @@ other data that still references it makes the delete a `409` (restricting foreig
   (`apps/api/test/sensitive-data.http.spec.ts`).
 
 Keys are accepted for Files, Collections, Tags, Memories and search under the permissions in
-[Workspace API keys](#workspace-api-keys); the MCP server is future work and is not implemented.
+[Workspace API keys](#workspace-api-keys); the MCP server is described under [Connect an agent over MCP](#connect-an-agent-over-mcp).
 
 ### CI
 `.github/workflows/ci.yml` runs on every pull request and on pushes to `main`: a frozen `pnpm install`,
@@ -250,8 +251,8 @@ TEST_DATABASE_URL=postgres://seshat:seshat@localhost:5432/seshat_test REQUIRE_IN
 
 ## Files, Collections and Tags
 Original files can be stored in Global or in one Workspace, optionally organized in Collections and labelled with Tags.
-Every upload is also ingested in the background (see [Ingestion](#ingestion)); Search is described under [Search and context](#search-and-context); MCP is **not**
-implemented. Every file has an `ingestionStatus` (`pending`, `processing`, `indexed` or `failed`). The Tag tables exist so
+Every upload is also ingested in the background (see [Ingestion](#ingestion)); Search is described under [Search and context](#search-and-context); MCP is described under
+[Connect an agent over MCP](#connect-an-agent-over-mcp). Every file has an `ingestionStatus` (`pending`, `processing`, `indexed` or `failed`). The Tag tables exist so
 that Memories can build on them later. The only storage backend is a local volume.
 
 ### Setup and deployment
@@ -580,7 +581,7 @@ authenticated principal: `createdBy.kind` is `admin` or `api_key`, with `keyId` 
 moment) for a key. Later renames, revocation or deletion of the key do not change it. The REST body is strict: any
 `provenance`, `createdBy*`, `client*`, `status`, `scope`, hash or embedding field is a `400`, never ignored. A
 `provenance.client` (`name` and `version`) exists for a future, **trusted MCP adapter** that reads the client's
-`initialize` info in code; no REST input sets it. **No MCP tools are shipped** (see below).
+`initialize` info in code; no REST input sets it. The MCP tools are listed under [Connect an agent over MCP](#connect-an-agent-over-mcp).
 
 ### Routes
 Under `/api/global/memories` and `/api/workspaces/:workspaceId/memories`; the table writes the path after that prefix:
@@ -660,15 +661,13 @@ TEST_DATABASE_URL=postgres://seshat:seshat@localhost:5432/seshat_test pnpm --fil
 ```
 
 ### Not included
-Recall tools, relationships other than supersession, expiry, automatic extraction and the MCP tools
-(`remember`, `recall` and friends) are not implemented (search over Memories exists, see [Search and context](#search-and-context)); the action names `memory.recall` and the MCP client context
-are groundwork only.
+Relationships other than supersession, expiry and automatic extraction are not implemented. The MCP tools
+(`remember`, `recall` and friends) are described under [Connect an agent over MCP](#connect-an-agent-over-mcp).
 
 ## Search and context
 Hybrid retrieval over **indexed file chunks** and **Memories**, in Global or one Workspace: a keyword ranking and a
 vector ranking are merged with reciprocal rank fusion (RRF). Everything below is delivered; the web pages are
-`/global/search` and `/w/<slug>/search`. The same services will back future MCP tools, but **no MCP tools exist**
-(neither does any saved search, reranker or search over original file bytes).
+`/global/search` and `/w/<slug>/search`. The same services back the MCP search tools; no saved search, reranker or search over original file bytes).
 
 ### Routes
 All routes are `POST` with a JSON body (they only read; they answer `200` with `Cache-Control: no-store`), except
@@ -846,15 +845,14 @@ They cover other-Workspace and ungranted-Global isolation, unreadable types, fil
 filters filling `limit`, and keyword-only degradation. CI sets `REQUIRE_INTEGRATION_TESTS=true`.
 
 ### Not included
-MCP tools (`search_knowledge`, `get_context`, `recall` and friends), saved searches, rerankers, search over original
-file bytes, and totals or facets. The retrieval services are reusable; a future MCP tool should be a thin wrapper that
-calls them with the key's principal.
+saved searches, rerankers, search over original
+file bytes, and totals or facets. The MCP tools are thin wrappers over the retrieval services with the key's principal.
 
 ## Workspace API keys
 A Workspace API key is a credential owned by exactly one Workspace, for agents and applications. It is managed by the
 admin and carries an explicit list of permissions. Key management, authentication and the authorization policy
 exist, and Files, Collections, Tags, Memories and search accept a key under the permissions below. The MCP server
-is not implemented.
+uses the same keys (see [Connect an agent over MCP](#connect-an-agent-over-mcp)).
 
 ### Setup
 1. Generate a pepper and set it in `apps/api/.env` as `API_KEY_PEPPER` (required, at least 32 characters; the API
@@ -950,10 +948,97 @@ Rules enforced by `AuthorizationService.assertCan`:
   needs: default-deny coverage, an own-Workspace allow and missing-permission `403`, a foreign-vs-missing Workspace test
   that compares the two `404` responses byte for byte, Global tests for the dual grant, and revoked and expired keys.
 
-## How Gilde uses Seshat *(planned)*
-Gilde attaches Seshat as a project MCP server using a Workspace API key. What an agent can read or write
-through it depends on that key's permissions, and on any Global knowledge explicitly granted to the key.
-There is no Seshat MCP endpoint today.
+## Connect an agent over MCP
+Seshat serves MCP at `POST /mcp` (outside the `/api` prefix; `http://localhost:4200/mcp` in development) with the official
+TypeScript SDK in **stateless Streamable HTTP** mode: every request is self-contained, there are no sessions, and `GET` and
+`DELETE` answer 405. The only credential is a [Workspace API key](#workspace-api-keys) sent as `Authorization: Bearer <key>`.
+A missing, unknown, revoked or expired key, and the admin session cookie, all give the same `401` with
+`WWW-Authenticate: Bearer`. The web app does not proxy `/mcp`: clients connect to the API port directly (set
+`NEXT_PUBLIC_SESHAT_MCP_URL` so the Workspace MCP page shows the public address).
+
+### Create a key
+In the web app open **Workspace → API keys**, create a key and pick a preset, then copy the secret (it is shown once):
+
+- **Agent: read** (`files:read`, `collections:read`, `memories:read`, `search`) lists and calls the ten read tools.
+- **Agent: read and write** adds `files:write`, `collections:write` and `memories:write`, and with them `upload_file`, `remember` and
+  `update_memory`. `delete_file` and `forget` additionally need `files:delete` and `memories:delete`, which no preset grants; add them deliberately.
+- **Global** knowledge is reachable only with `global:read` on top of the matching read permissions.
+
+The **Workspace → MCP** page shows the endpoint, copyable configuration with a placeholder key, and the tools a selected key
+would get. A tool is listed only when the key's permissions satisfy it; an unlisted tool fails exactly like an unknown tool,
+and every call is checked again through `AuthorizationService`, so the list is a convenience, not the control.
+
+### Connect Gilde
+In the Gilde project settings add a project MCP server with transport **Streamable HTTP**, the URL
+`https://<your-seshat>/mcp` and the header `Authorization: Bearer <YOUR_SESHAT_API_KEY>` (keep the key in Gilde's secret
+store, never in the repository). For unattended agents use a key with the read preset and mark only the read-only tools
+(those annotated `readOnlyHint: true`) as allowed in Gilde, so a job can look things up without the ability to write or delete.
+Give an agent that must store learnings its own key with `memories:write` and allow `remember` and `update_memory` explicitly.
+
+### Connect Claude Code
+Add this to the project's `.mcp.json` (or run `claude mcp add --transport http seshat <url> --header "Authorization: Bearer <YOUR_SESHAT_API_KEY>"`):
+
+```json
+{
+  "mcpServers": {
+    "seshat": {
+      "type": "http",
+      "url": "http://localhost:4200/mcp",
+      "headers": { "Authorization": "Bearer <YOUR_SESHAT_API_KEY>" }
+    }
+  }
+}
+```
+
+Never commit a real key; expand it from an environment variable (`"Bearer ${SESHAT_API_KEY}"`) if the file is shared.
+
+### Tools
+All tools act in the key's own Workspace. Read tools take an optional `scope: "global"` and search tools `includeGlobal: true`,
+both needing `global:read`; writing tools reject both (their schemas are closed). Annotations: read tools `readOnlyHint: true`;
+`delete_file` and `forget` `destructiveHint: true`; the other writing tools `readOnlyHint: false`.
+
+| Tool | Needs | Annotation | What it does |
+| --- | --- | --- | --- |
+| `list_files` | `files:read` | read-only | Files with ingestion status; filters `collectionId`, `tag`, `status`, `name`; paged |
+| `get_file` | `files:read` | read-only | One file's metadata, status, chunk count and provenance (never the bytes) |
+| `get_file_chunks` | `files:read` | read-only | Indexed chunks of a file with their location; content returned as delimited data |
+| `list_collections` | `collections:read` | read-only | Collections, to use their ids as filters |
+| `list_tags` | `files:read` or `memories:read` | read-only | Shared tags |
+| `search_knowledge` | `search` + `files:read` or `memories:read` (per requested type) | read-only | Hybrid keyword and vector search over chunks and Memories |
+| `get_context` | `search` + `files:read` or `memories:read` | read-only | One budgeted, cited text block plus its sources, ready for a prompt |
+| `recall` | `search` + `memories:read` | read-only | Search over Memories only; filters type, tags, superseded |
+| `list_memories` | `memories:read` | read-only | Memories newest first; filters type, tag, status, text; paged |
+| `get_related_memories` | `search` + `memories:read` | read-only | Nearest Memories to a Memory, from stored embeddings |
+| `upload_file` | `files:write` | writing | `name` plus `text` or `base64`; optional `collectionId`, `tags`; starts `pending` and is indexed in the background |
+| `delete_file` | `files:delete` | destructive | Permanently deletes a file, its chunks and its original |
+| `remember` | `memories:write` | writing | Stores a Memory (deduplicated; returns similar-Memory hints) |
+| `update_memory` | `memories:write` | writing | Full replacement of a Memory |
+| `forget` | `memories:delete` | destructive | Permanently deletes a Memory |
+
+`upload_file` and `remember` record the key (id and name at that time) and, when the client repeats it in `params._meta.clientInfo`,
+the MCP client name and version, as provenance.
+
+### Caps and safety
+- `MCP_MAX_UPLOAD_BYTES` (default 10485760) caps the decoded size of an `upload_file`; larger content gives the tool error
+  `Content is too large.` and stores nothing. The HTTP body limit of `/mcp` with a Bearer key follows from it (base64 plus 64 KB); other routes keep 16 KB.
+- `MCP_MAX_RESULT_CHARS` (default 20000) caps every tool result. A longer text ends with a truncation note, and structured content that
+  cannot fit is replaced by `{ "truncated": true }`; narrow the request or page. `get_context` also takes its own `maxChars`.
+- Retrieved content (chunk text, Memory content, context) is wrapped in `<<<RETRIEVED DATA BEGIN ...>>>` blocks with a notice that it is
+  data, not instructions, and the markers inside it are neutralized.
+- Tool errors are `isError: true` with a fixed short message: `Invalid input: <field names>.`, `Missing permission: <permissions>.`,
+  `Not found.`, `Content is too large.`, `Conflict with the current state.` or `Internal error.` An id from another Workspace, a malformed
+  id and a random id all give the same `Not found.`. Errors never carry stack traces, SQL, paths, keys or request content.
+
+### Global access
+Global is never implicit. Without `global:read` a key sees only its own Workspace, and asking for Global gives `Not found.` (read tools)
+or `Missing permission: global:read.` (`includeGlobal` searches). With it, read tools can read Global and searches can include it.
+No key and no tool ever writes to Global: `upload_file`, `remember`, `update_memory`, `delete_file` and `forget` act only in the key's Workspace.
+
+### Testing
+`apps/api/test/mcp-e2e.integration.spec.ts` starts the real application (real PostgreSQL, pg-boss worker and API keys; only the embedding
+provider is the deterministic fake) on a real port and drives it with the SDK client. It needs a disposable `TEST_DATABASE_URL`, creates and
+drops its own database, and is one of the suites CI requires to have executed. The transport and tool unit and HTTP specs
+(`mcp*.http.spec.ts`) run without a database.
 
 ## Contributing
 Coding agents: read `AGENTS.md`. The Gilde manifest is `.gilde.json`; skills are synced into `.claude/skills/`
