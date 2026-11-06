@@ -1,10 +1,11 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
 import { Readable } from 'node:stream';
-import { Inject, Injectable, Logger, NotFoundException, PayloadTooLargeException } from '@nestjs/common';
+import { Inject, Injectable, Logger, NotFoundException, Optional, PayloadTooLargeException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { getDataSourceToken } from '@nestjs/typeorm';
 import type { DataSource, EntityManager } from 'typeorm';
+import { UsageCollector } from '../usage/usage-request-context.js';
 import { AuthorizationService } from '../auth/authorization.service.js';
 import type { Principal } from '../auth/principal.js';
 import { CollectionsService } from '../collections/collection.service.js';
@@ -57,6 +58,7 @@ export class FilesService {
     @Inject(StorageCleanupService) private readonly cleanup: StorageCleanupService,
     @Inject(EventEmitter2) private readonly events: EventEmitter2,
     @Inject(APP_CONFIG) private readonly config: Pick<AppConfig, 'maxUploadBytes'>,
+    @Optional() @Inject(UsageCollector) private readonly usage?: UsageCollector,
   ) {}
 
   /** REST multipart upload: authorizes before the body is read, then runs the shared core. */
@@ -254,6 +256,7 @@ export class FilesService {
     this.authorization.assertCan(principal, 'file.get', scope);
     const row = await this.findRow(scope, fileId);
     const tags = await this.tagNamesFor(scopeKeyOf(scope), [row.id]);
+    this.usage?.stage({ resourceKind: 'file', resourceId: row.id, scope, accessKind: 'read' });
     return toFileDto(row, tags.get(row.id) ?? []);
   }
 
@@ -277,6 +280,8 @@ export class FilesService {
       }
       throw new NotFoundException('Not Found');
     }
+    // Staged now, committed only when the response completes (an aborted download is discarded by the transport).
+    this.usage?.stage({ resourceKind: 'file', resourceId: row.id, scope, accessKind: 'read' });
     return { stream, name: row.name, mimeType: row.mime_type, sizeBytes: Number(row.size_bytes) };
   }
 

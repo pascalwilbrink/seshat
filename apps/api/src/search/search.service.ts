@@ -1,6 +1,8 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { getDataSourceToken } from '@nestjs/typeorm';
 import type { DataSource } from 'typeorm';
+import { UsageCollector } from '../usage/usage-request-context.js';
+import { stageRetrieved } from '../usage/usage-staging.js';
 import { AuthorizationService } from '../auth/authorization.service.js';
 import type { Principal } from '../auth/principal.js';
 import type { ScopeRef } from '../scopes/scope-ref.js';
@@ -26,9 +28,16 @@ export class SearchService {
     @Inject(AuthorizationService) private readonly authorization: AuthorizationService,
     @Inject(RetrievalService) private readonly retrieval: RetrievalService,
     @Inject(getDataSourceToken()) private readonly dataSource: DataSource,
+    @Optional() @Inject(UsageCollector) private readonly usage?: UsageCollector,
   ) {}
 
   async search(principal: Principal, scope: ScopeRef, body: GlobalSearchRequest | WorkspaceSearchRequest): Promise<SearchResponse> {
+    const found = await this.run(principal, scope, body);
+    stageRetrieved(this.usage, found.results);
+    return found;
+  }
+
+  private async run(principal: Principal, scope: ScopeRef, body: GlobalSearchRequest | WorkspaceSearchRequest): Promise<SearchResponse> {
     const request = toSearchRequest(body);
     const plan = this.authorization.authorizeSearch(principal, scope, { types: request.types, includeGlobal: request.includeGlobal });
     await this.assertScopeExists(scope);
@@ -41,8 +50,10 @@ export class SearchService {
    */
   async context(principal: Principal, scope: ScopeRef, body: GlobalContextRequest | WorkspaceContextRequest): Promise<ContextResponse> {
     const { maxChars, ...searchBody } = body;
-    const found = await this.search(principal, scope, searchBody);
+    // Not `search()`: the intermediate candidates must not count, only the sources the budgeted context really cites.
+    const found = await this.run(principal, scope, searchBody);
     const { context, sources } = formatContext(found.results, maxChars);
+    stageRetrieved(this.usage, sources.map((s) => (s.kind === 'chunk' ? { kind: 'chunk', id: s.id, scope: s.scope, file: s.file } : { kind: 'memory', id: s.id, scope: s.scope })));
     return found.degraded ? { context, sources, degraded: found.degraded } : { context, sources };
   }
 
