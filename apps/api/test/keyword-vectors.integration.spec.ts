@@ -59,6 +59,7 @@ describeIntegration('keyword search vectors (real PostgreSQL with pgvector)', ()
     // Everything before the keyword migration, so existing rows can be backfilled by it.
     await ds.runMigrations({ transaction: 'each' });
     await ds.undoLastMigration({ transaction: 'each' }); // usage
+    await ds.undoLastMigration({ transaction: 'each' }); // usage
     await ds.undoLastMigration({ transaction: 'each' }); // file provenance
     await ds.undoLastMigration({ transaction: 'each' }); // keyword vectors
   });
