@@ -66,6 +66,11 @@ export interface FileDto {
   indexedAt: string | null;
   /** Number of chunks stored for the file. */
   chunkCount: number;
+  /** Server-owned provenance; `createdBy` is null for files that predate it. */
+  provenance: {
+    createdBy: { kind: 'admin' | 'api_key'; keyId: string | null; keyName: string | null } | null;
+    client: { name: string; version: string | null } | null;
+  };
   createdAt: string;
   updatedAt: string;
 }

@@ -507,6 +507,27 @@ TEST_DATABASE_URL=postgres://seshat:seshat@localhost:5432/seshat_test pnpm --fil
 They create throwaway pg-boss schemas and per-test application schemas. CI already requires them
 (`REQUIRE_INTEGRATION_TESTS=true`). Never point `TEST_DATABASE_URL` at a database with real data.
 
+### File provenance and MCP write tools
+
+Every file records who created it: `provenance.createdBy` (`admin`, or `api_key` with the key id and the key's name at that
+time) and `provenance.client` (MCP client name and version, only for MCP uploads, otherwise `null`). It is written by the
+server once (migration `AddFileProvenance`, reversible; files from before it have `createdBy: null`), enforced immutable by a
+database trigger, and never accepted from a client. REST multipart uploads and MCP uploads share one upload core
+(`FilesService`), so validation, storage layout, cleanup and the `file.uploaded` event are identical.
+
+The MCP writing tools act only in the key's Workspace (their schemas are closed: a `scope` or Global option is rejected):
+
+| Tool | Permission | Annotations | Notes |
+| --- | --- | --- | --- |
+| `upload_file` | `files:write` | `readOnlyHint: false` | `name` plus exactly one of `text` (UTF-8) or `base64`; optional `collectionId`, `tags`. Decoded size is capped by `MCP_MAX_UPLOAD_BYTES`; the file starts `pending` |
+| `delete_file` | `files:delete` | `destructiveHint: true` | `id` |
+| `remember` | `memories:write` | `readOnlyHint: false` | same fields as `POST /memories`, `supersedes` optional; returns `deduplicated` and similar-memory hints |
+| `update_memory` | `memories:write` | `readOnlyHint: false` | `id` plus every editable field (full replacement, `null` clears), like `PUT` |
+| `forget` | `memories:delete` | `destructiveHint: true` | `id` |
+
+The client name and version are read only from the call itself (`params._meta.clientInfo`); a stateless server does not see
+the `initialize` request of earlier calls, so clients that do not repeat their info on each call are recorded without one.
+
 ## Memories
 Memories are persistent knowledge records, not documents: a fact, a decision, a preference, an experience, a
 procedure or some context that an agent or the admin chose to keep. A Memory belongs to **Global or exactly one

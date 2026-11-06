@@ -78,6 +78,7 @@ const file = (over: Partial<FileDto> = {}): FileDto => ({
   ingestionError: null,
   indexedAt: null,
   chunkCount: 0,
+  provenance: { createdBy: null, client: null },
   createdAt: '2026-03-02T10:00:00.000Z',
   updatedAt: '2026-03-02T10:00:00.000Z',
   ...over,
