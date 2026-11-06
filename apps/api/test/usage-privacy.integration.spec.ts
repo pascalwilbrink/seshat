@@ -273,6 +273,8 @@ describeIntegration('usage insights: counting, privacy and security end to end',
       await api('GET', `/workspaces/${wsA}/files/${fileId}/download`);
       await api('GET', `/workspaces/${wsA}/memories?text=${S.query}&tag=${S.tag}`);
       await api('GET', `/workspaces/${wsA}/memories/${memoryId}/related`);
+      // Persist everything recorded so far, so the failing flush below only drops its own batch.
+      await flush();
       // Observer / flush DB failure with a hostile driver message.
       const { UsagePersistenceService } = await import('../src/usage/usage-persistence.service.js');
       const persist = vi.spyOn(app.get(UsagePersistenceService), 'persistBatch').mockRejectedValue(Object.assign(new Error(`password authentication failed ${S.driver}`), { detail: S.driver, query: S.query }));
@@ -356,9 +358,13 @@ describeIntegration('usage insights: counting, privacy and security end to end',
         `/workspaces/${wsB}/usage/overview`, `/workspaces/${wsB}/usage/top?kind=file`, `/workspaces/${wsB}/usage/unused?kind=file`,
         `/workspaces/${wsB}/mcp-calls`, `/global/usage/overview`, `/global/mcp-calls`,
       ];
+      // Workspace alpha (and its keys) was deleted by the previous test, so use a key of the remaining Workspace.
+      const created = await api('POST', `/workspaces/${wsB}/api-keys`, { name: 'bravo-full', permissions: ALL });
+      expect(created.status).toBe(201);
+      const bravoKey = { id: created.json.apiKey.id as string, secret: created.json.secret as string };
       for (const r of routes) {
         expect((await api('GET', r, undefined, undefined, {})).status, `${r} unauthenticated`).toBe(401);
-        expect((await api('GET', r, undefined, undefined, bearer(key))).status, `${r} key`).toBe(403);
+        expect((await api('GET', r, undefined, undefined, bearer(bravoKey))).status, `${r} key`).toBe(403);
       }
       const foreign = await api('GET', `/workspaces/${wsB}/files/${randomUUID()}/usage`);
       const unknown = await api('GET', `/workspaces/${wsB}/files/${randomUUID()}/usage`);
