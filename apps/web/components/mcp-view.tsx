@@ -13,6 +13,7 @@ import { Select } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { CodeSnippet } from './code-snippet';
 import { CopyField } from './copy-field';
+import { McpHistory } from './mcp-history';
 import { EmptyState } from './empty-state';
 import { ErrorState } from './error-state';
 import { PageHeader } from './page-header';
@@ -85,6 +86,12 @@ function McpPanel({ workspace, endpoint }: { workspace: WorkspaceDto; endpoint: 
       </div>
 
       <ToolPreview workspace={workspace} />
+
+      <div className="flex min-w-0 flex-col gap-2">
+        <h2 className="text-lg font-semibold">Call history</h2>
+        <p className="text-sm text-muted-foreground">Recent MCP calls made with this Workspace’s keys. Key names are shown as they were at call time.</p>
+        <McpHistory scope={{ kind: 'workspace', workspace }} />
+      </div>
     </section>
   );
 }

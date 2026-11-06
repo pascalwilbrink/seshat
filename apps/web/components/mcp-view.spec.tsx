@@ -48,6 +48,7 @@ const KEY_LIST = [
 function setup(keysResponse: () => Response | Promise<Response> = () => json(KEY_LIST), endpoint: McpEndpoint = { url: DEFAULT_MCP_URL, invalid: false }) {
   fetchMock.mockImplementation((url: string) => {
     if (url === '/api/global/workspaces') return Promise.resolve(json([alpha]));
+    if (url.startsWith('/api/workspaces/uuid-1/mcp-calls')) return Promise.resolve(json({ scope: 'workspace', workspaceId: 'uuid-1', items: [], nextCursor: null, hasMore: false, limit: 25 }));
     if (url === KEYS) return Promise.resolve(keysResponse());
     throw new Error(`Unexpected fetch ${url}`);
   });
@@ -143,7 +144,7 @@ describe('McpView tool preview', () => {
     await user.selectOptions(await screen.findByLabelText('API key'), 'rw');
     const names = toolNames();
     expect(names).toEqual(catalogToolsFor(['files:read', 'files:write', 'files:delete', 'memories:read', 'memories:write', 'memories:delete', 'search']));
-    const row = (n: string) => screen.getByText(n).closest('li')!;
+    const row = (n: string) => within(screen.getByRole('list', { name: /^Tools for/ })).getByText(n).closest('li')!;
     expect(within(row('upload_file')).getByText('Writing')).toBeInTheDocument();
     expect(within(row('delete_file')).getByText('Destructive')).toBeInTheDocument();
     expect(within(row('forget')).getByText('Destructive')).toBeInTheDocument();
@@ -158,7 +159,7 @@ describe('McpView tool preview', () => {
     const user = userEvent.setup();
     await user.selectOptions(await screen.findByLabelText('API key'), 'gl');
     expect(screen.getByText(/can also reach Global/)).toBeInTheDocument();
-    const row = (n: string) => screen.getByText(n).closest('li')!;
+    const row = (n: string) => within(screen.getByRole('list', { name: /^Tools for/ })).getByText(n).closest('li')!;
     expect(within(row('list_files')).getByText('Global')).toBeInTheDocument();
     expect(toolNames()).toEqual(catalogToolsFor(['files:read', 'search', 'global:read']));
     await user.selectOptions(screen.getByLabelText('API key'), 'ro');
