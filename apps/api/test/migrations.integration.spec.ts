@@ -41,6 +41,7 @@ describeIntegration('migrations (real PostgreSQL)', () => {
       'AddMemoryEmbeddingGeneration1763000000000',
       'AddKeywordSearchVectors1763100000000',
       'AddFileProvenance1763200000000',
+      'CreateUsage1763300000000',
     ]);
   });
 
@@ -58,6 +59,7 @@ describeIntegration('migrations (real PostgreSQL)', () => {
       'AddMemoryEmbeddingGeneration1763000000000',
       'AddKeywordSearchVectors1763100000000',
       'AddFileProvenance1763200000000',
+      'CreateUsage1763300000000',
     ]);
     expect(await vectorInstalled()).toBe(true);
 
@@ -70,11 +72,11 @@ describeIntegration('migrations (real PostgreSQL)', () => {
     const tables = await iso.query(
       `SELECT table_name FROM information_schema.tables WHERE table_schema = '${iso.schema}' ORDER BY table_name`,
     );
-    expect(tables.map((t) => t.table_name)).toEqual(['api_keys', 'chunks', 'collections', 'file_tags', 'files', 'memories', 'memory_tags', 'migrations', 'storage_cleanup_intents', 'tags', 'workspaces']);
+    expect(tables.map((t) => t.table_name)).toEqual(['api_keys', 'chunks', 'collections', 'file_tags', 'file_usage_daily', 'file_usage_totals', 'files', 'mcp_call_resources', 'mcp_calls', 'mcp_list_daily', 'memories', 'memory_tags', 'memory_usage_daily', 'memory_usage_totals', 'migrations', 'storage_cleanup_intents', 'tags', 'usage_batches', 'workspaces']);
   });
 
   it('down drops memories, files tables, api_keys, then workspaces, then the extension; re-up succeeds', async () => {
-    for (let i = 0; i < 9; i += 1) await ds.undoLastMigration({ transaction: 'each' });
+    for (let i = 0; i < 10; i += 1) await ds.undoLastMigration({ transaction: 'each' });
     const tables = await iso.query(
       `SELECT table_name FROM information_schema.tables WHERE table_schema = '${iso.schema}'`,
     );
@@ -85,7 +87,7 @@ describeIntegration('migrations (real PostgreSQL)', () => {
     expect(await vectorInstalled()).toBe(false);
 
     const again = await ds.runMigrations({ transaction: 'each' });
-    expect(again).toHaveLength(10);
+    expect(again).toHaveLength(11);
     expect(await vectorInstalled()).toBe(true);
   });
 

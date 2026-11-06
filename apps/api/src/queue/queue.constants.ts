@@ -5,7 +5,11 @@ export const QUEUE_SCHEMA = 'pgboss';
 export const INGEST_FILE_QUEUE = 'ingest-file';
 /** Queue that carries one job per Memory embedding generation (payload: scope key, Memory id, generation; never text). */
 export const EMBED_MEMORY_QUEUE = 'embed-memory';
-export type QueueName = typeof INGEST_FILE_QUEUE | typeof EMBED_MEMORY_QUEUE;
+/** Queue of the daily usage pruning job (payload: none). */
+export const PRUNE_USAGE_QUEUE = 'prune-usage';
+/** pg-boss cron (evaluated in UTC): once a day at 03:15. */
+export const PRUNE_USAGE_CRON = '15 3 * * *';
+export type QueueName = typeof INGEST_FILE_QUEUE | typeof EMBED_MEMORY_QUEUE | typeof PRUNE_USAGE_QUEUE;
 
 /**
  * pg-boss `retryLimit` counts retries after the first attempt (verified against the installed version in

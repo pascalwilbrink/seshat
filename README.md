@@ -122,6 +122,8 @@ pnpm dev       # API on :4200 and web on :3000
 | `INGESTION_CONCURRENCY` | no | Positive integer, default `2`: parallel `ingest-file` jobs per API process. |
 | `CHUNK_SIZE_CHARS` | no | Positive integer, default `2000`: maximum characters per chunk. |
 | `CHUNK_OVERLAP_CHARS` | no | Integer >= 0 and smaller than `CHUNK_SIZE_CHARS`, default `200`. |
+| `USAGE_RETENTION_DAYS` | no | Positive integer, default `365`: daily File/Memory access counters older than this many UTC days are pruned by a daily pg-boss job (03:15 UTC). Lifetime totals (all time, per channel and kind) and `last_accessed_at` are never pruned. |
+| `MCP_CALL_RETENTION_DAYS` | no | Positive integer, default `90`: MCP call history (and the per-key `tools/list` counters) older than this many UTC days is pruned by the same job. |
 | `TRUST_PROXY` | no | `false` (default) or the number of trusted reverse-proxy hops (1-99), used for the client IP. |
 | `PORT` | no | 1-65535, default 4200. |
 | `NODE_ENV` | no | `development` (default), `test` or `production`. |
@@ -220,7 +222,7 @@ cp .env.example .env
 | `OPENAI_API_KEY` | yes | Embeddings (the API refuses to start without it). |
 | `DATABASE_URL` | set by Compose | The `app` service overrides it with `postgres://$POSTGRES_USER:$POSTGRES_PASSWORD@db:5432/$POSTGRES_DB`. A value in `.env` is ignored under Compose; set it yourself only when you run the image with plain `docker run` against another database. |
 | `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | no | Default `seshat`/`seshat`/`seshat`. They apply only when the `pgdata` volume is first created; change the password to a URL-safe random value (`openssl rand -hex 24`) on any shared host. |
-| `EMBEDDING_MODEL`, `EMBEDDING_DIMENSION`, `INGESTION_CONCURRENCY`, `CHUNK_SIZE_CHARS`, `CHUNK_OVERLAP_CHARS`, `MEMORY_SIMILARITY_HINT`, `MAX_UPLOAD_BYTES`, `MCP_MAX_UPLOAD_BYTES`, `MCP_MAX_RESULT_CHARS`, `TRUST_PROXY` | no | Same meaning and defaults as in the [configuration table](#configuration-appsapi). `EMBEDDING_DIMENSION` must stay `1536`. |
+| `EMBEDDING_MODEL`, `EMBEDDING_DIMENSION`, `INGESTION_CONCURRENCY`, `CHUNK_SIZE_CHARS`, `CHUNK_OVERLAP_CHARS`, `MEMORY_SIMILARITY_HINT`, `MAX_UPLOAD_BYTES`, `MCP_MAX_UPLOAD_BYTES`, `MCP_MAX_RESULT_CHARS`, `USAGE_RETENTION_DAYS`, `MCP_CALL_RETENTION_DAYS`, `TRUST_PROXY` | no | Same meaning and defaults as in the [configuration table](#configuration-appsapi). `EMBEDDING_DIMENSION` must stay `1536`. |
 
 **Admin password hash.** Generate it with the existing command from a checkout with dependencies installed
 (`pnpm install`); it prompts for the password without echo and prints only the hash:
