@@ -66,6 +66,7 @@ export const USAGE_ADMIN_ENDPOINTS = [
   { action: 'usage.memory', method: 'GET', path: 'memories/:memoryId/usage', ok: 200 },
   { action: 'usage.top', method: 'GET', path: 'usage/top', ok: 200 },
   { action: 'usage.unused', method: 'GET', path: 'usage/unused', ok: 200 },
+  { action: 'usage.overview', method: 'GET', path: 'usage/overview', ok: 200 },
 ] as const satisfies readonly { action: Action; method: 'GET'; path: string; ok: 200 }[];
 
 /** The Express route strings of the usage routes, in Global and in a Workspace. */

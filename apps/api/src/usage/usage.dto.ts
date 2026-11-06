@@ -1,7 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { z } from 'zod';
 import { decodeCursor, encodeCursor, type FileCursor } from '../files/file-list-query.js';
-import type { AccessKind, UsageChannel, UsageResourceKind } from './usage.constants.js';
+import type { AccessKind, McpOutcome, UsageChannel, UsageResourceKind } from './usage.constants.js';
 
 /**
  * Admin usage analytics: request validation and response shapes. Responses are minimal projections: ids, scope,
@@ -66,6 +66,13 @@ export function parseUnusedQuery(raw: unknown): { resource: UsageResourceKind; d
   };
 }
 
+/** `?days=` of the overview routes. Same generic 400 as the other usage routes. */
+export function parseOverviewQuery(raw: unknown): { days: UsageWindowDays } {
+  return parseResourceUsageQuery(raw);
+}
+
+export const USAGE_OVERVIEW_TOP_LIMIT = 10;
+
 export { encodeCursor as encodeUsageCursor };
 
 export interface UsageWindowDto {
@@ -129,4 +136,34 @@ export interface UsageUnusedDto {
   nextCursor: string | null;
   hasMore: boolean;
   limit: number;
+}
+
+/**
+ * Dashboard aggregate of one scope for one window (`GET .../usage/overview`). Definitions:
+ * - Window: the last `days` UTC days including today. `from`/`to` are the first and last UTC day (inclusive); MCP calls are
+ *   counted when `occurred_at` is within [`from` 00:00:00Z, `to`+1 day 00:00:00Z). Every daily series has exactly `days` points.
+ * - `files` / `memories` / `unused` / `accesses` / `top*` always describe the resources of this scope only: in Global that
+ *   means Global resources, never the sum of Workspaces.
+ * - `mcp` counts `tools/call` rows of this Workspace; in Global it aggregates all Workspaces (see `callsByWorkspace`).
+ * - `mcp.errors` are calls whose outcome is not `ok`; `errorRate` = errors / calls, 0 when there are no calls.
+ * - `unused.files` = Files without a daily counter in the window; `unused.memories` = active Memories without one.
+ * Only ids, counts, tool names and Workspace identity are returned, never titles, names, content, arguments or queries.
+ */
+export interface UsageOverviewDto {
+  scope: 'global' | 'workspace';
+  workspaceId: string | null;
+  window: UsageWindowDto;
+  files: { total: number; indexed: number; failed: number };
+  memories: { total: number; active: number; superseded: number };
+  mcp: { calls: number; errors: number; errorRate: number };
+  unused: { files: number; memories: number };
+  /** File and Memory accesses per UTC day (zero-filled, oldest first). */
+  accessesDaily: Array<{ day: string; total: number; byChannel: Record<UsageChannel, number> }>;
+  /** MCP calls per UTC day (zero-filled, oldest first). */
+  callsDaily: Array<{ day: string; total: number; byOutcome: Record<McpOutcome, number> }>;
+  topTools: Array<{ tool: string; calls: number }>;
+  topFiles: Array<{ id: string; count: number }>;
+  topMemories: Array<{ id: string; count: number }>;
+  /** Global only: calls per Workspace (calls > 0, most first); null in a Workspace. */
+  callsByWorkspace: Array<{ workspaceId: string; slug: string; name: string; calls: number }> | null;
 }
