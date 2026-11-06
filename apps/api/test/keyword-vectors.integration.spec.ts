@@ -59,7 +59,6 @@ describeIntegration('keyword search vectors (real PostgreSQL with pgvector)', ()
     // Everything before the keyword migration, so existing rows can be backfilled by it.
     await ds.runMigrations({ transaction: 'each' });
     await ds.undoLastMigration({ transaction: 'each' }); // usage
-    await ds.undoLastMigration({ transaction: 'each' }); // usage
     await ds.undoLastMigration({ transaction: 'each' }); // file provenance
     await ds.undoLastMigration({ transaction: 'each' }); // keyword vectors
   });
@@ -205,6 +204,7 @@ describeIntegration('keyword search vectors (real PostgreSQL with pgvector)', ()
   it('down removes the columns and indexes only; up restores them and reindexes existing rows', async () => {
     const f = await addFile();
     const c = await addChunk(f, 'kilo roundtrip');
+    await ds.undoLastMigration({ transaction: 'each' }); // usage
     await ds.undoLastMigration({ transaction: 'each' }); // file provenance
     await ds.undoLastMigration({ transaction: 'each' }); // keyword vectors
     expect(await q(`SELECT 1 FROM information_schema.columns WHERE table_schema = $1 AND column_name IN ('content_tsv','search_tsv')`, [iso.schema])).toEqual([]);
