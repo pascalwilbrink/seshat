@@ -30,7 +30,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
 
 /**
  * The one place that declares navigation. To add an area, add an entry here and create its route.
- * Overview, Search, Memories and Settings are listed for now; Files, Collections and
+ * Overview, Search, Memories, MCP and Settings are listed for now; Files, Collections and
  * API Keys keep their direct routes but are not listed.
  */
 export const NAV_AREAS: readonly NavArea[] = [
@@ -40,7 +40,7 @@ export const NAV_AREAS: readonly NavArea[] = [
   { id: 'search', label: 'Search', group: 'knowledge', icon: Search, route: 'search', scopes: ['global', 'workspace'], available: true },
   { id: 'memories', label: 'Memories', group: 'knowledge', icon: Brain, route: 'memories', scopes: ['global', 'workspace'], available: true },
   { id: 'api-keys', label: 'API Keys', group: 'developer', icon: KeyRound, route: 'api-keys', scopes: ['workspace'], available: false },
-  { id: 'mcp', label: 'MCP', group: 'developer', icon: Plug, route: 'mcp', scopes: ['workspace'], available: false },
+  { id: 'mcp', label: 'MCP', group: 'developer', icon: Plug, route: 'mcp', scopes: ['workspace'], available: true },
   { id: 'settings', label: 'Settings', group: 'system', icon: Settings, route: 'settings', scopes: ['global', 'workspace'], available: true },
 ];
 
