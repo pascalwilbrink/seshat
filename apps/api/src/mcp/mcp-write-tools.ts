@@ -80,7 +80,7 @@ export class McpWriteTools implements OnModuleInit {
           ctx.client,
           maxUpload,
         );
-        return { structured: { file } };
+        return { structured: { file }, touched: [{ resourceKind: 'file', resourceId: file.id, action: 'created' }] };
       },
     };
 
@@ -93,7 +93,7 @@ export class McpWriteTools implements OnModuleInit {
       actions: ['file.delete'],
       handler: async (input, ctx) => {
         await this.files.remove(ctx.principal, ctx.scope, input.id);
-        return { structured: { deleted: true, id: input.id } };
+        return { structured: { deleted: true, id: input.id }, touched: [{ resourceKind: 'file', resourceId: input.id, action: 'deleted' }] };
       },
     };
 
@@ -107,7 +107,9 @@ export class McpWriteTools implements OnModuleInit {
       actions: ['memory.remember'],
       handler: async (input, ctx) => {
         const memory = await this.memories.create(ctx.principal, ctx.scope, input, ctx.client);
-        return { structured: { ...memory }, text: asMemoryText(memory.id, { ...memory }) };
+        // A deduplicated create reused an existing memory (tags merged): it is an update, not a creation.
+        const action = (memory as { deduplicated?: boolean }).deduplicated ? 'updated' : 'created';
+        return { structured: { ...memory }, text: asMemoryText(memory.id, { ...memory }), touched: [{ resourceKind: 'memory', resourceId: memory.id, action }] };
       },
     };
 
@@ -122,7 +124,7 @@ export class McpWriteTools implements OnModuleInit {
       handler: async (input, ctx) => {
         const { id, ...body } = input;
         const memory = await this.memories.update(ctx.principal, ctx.scope, id, body);
-        return { structured: { ...memory }, text: asMemoryText(memory.id, { ...memory }) };
+        return { structured: { ...memory }, text: asMemoryText(memory.id, { ...memory }), touched: [{ resourceKind: 'memory', resourceId: memory.id, action: 'updated' }] };
       },
     };
 
@@ -135,7 +137,7 @@ export class McpWriteTools implements OnModuleInit {
       actions: ['memory.forget'],
       handler: async (input, ctx) => {
         await this.memories.remove(ctx.principal, ctx.scope, input.id);
-        return { structured: { forgotten: true, id: input.id } };
+        return { structured: { forgotten: true, id: input.id }, touched: [{ resourceKind: 'memory', resourceId: input.id, action: 'deleted' }] };
       },
     };
 
