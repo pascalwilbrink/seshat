@@ -5,7 +5,7 @@ import { type KeyboardEvent, useCallback, useEffect, useId, useRef, useState } f
 import { Plug } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import type { ApiKeyDto, WorkspaceDto } from '@/lib/api-types';
-import { claudeCodeConfig, describeRequirement, gildeConfig, KIND_LABEL, publicMcpEndpoint, toolsForPermissions } from '@/lib/mcp-config';
+import { claudeCodeConfig, describeRequirement, gildeConfig, KIND_LABEL, toolsForPermissions, type McpEndpoint } from '@/lib/mcp-config';
 import { GLOBAL_OVERVIEW_PATH } from '@/lib/scope';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
@@ -24,7 +24,7 @@ const NETWORK = 'Could not reach the server. Check your connection and try again
 const SESSION = 'Your session has expired. Log in again to continue.';
 
 /** Workspace MCP page. There is no Global variant: MCP clients always connect with a Workspace key. */
-export function McpView({ slug }: { slug: string }) {
+export function McpView({ slug, endpoint }: { slug: string; endpoint: McpEndpoint }) {
   const { state, reload } = useWorkspaces();
   if (state.status === 'loading') {
     return (
@@ -54,11 +54,10 @@ export function McpView({ slug }: { slug: string }) {
       </section>
     );
   }
-  return <McpPanel key={workspace.id} workspace={workspace} />;
+  return <McpPanel key={workspace.id} workspace={workspace} endpoint={endpoint} />;
 }
 
-function McpPanel({ workspace }: { workspace: WorkspaceDto }) {
-  const endpoint = publicMcpEndpoint();
+function McpPanel({ workspace, endpoint }: { workspace: WorkspaceDto; endpoint: McpEndpoint }) {
   return (
     <section className="flex min-w-0 flex-col gap-6">
       <PageHeader
@@ -74,7 +73,7 @@ function McpPanel({ workspace }: { workspace: WorkspaceDto }) {
         </p>
         {endpoint.invalid && (
           <p role="status" className="text-sm text-muted-foreground">
-            NEXT_PUBLIC_SESHAT_MCP_URL is not a valid http(s) URL, so the development default is shown.
+            SESHAT_MCP_URL is not a valid http(s) URL ending in /mcp, so the development default is shown.
           </p>
         )}
       </div>

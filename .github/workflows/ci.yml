@@ -4,10 +4,12 @@ on:
   pull_request:
   push:
     branches: [main]
+    tags: ['v*.*.*']
 
 permissions:
   contents: read
 
+# Per ref; only pull request runs are cancelled, so a publish in progress is never interrupted.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -56,7 +58,7 @@ jobs:
       # Belt and braces: prove the migration, vector and health suites really executed (not skipped).
       - run: node apps/api/scripts/verify-integration-results.mjs "$RUNNER_TEMP/vitest-results.json"
 
-  # Builds the combined image on the runner (never pushed anywhere) and smoke-tests the real app profile.
+  # Builds the combined image on the runner (never pushed anywhere by this job) and smoke-tests the real app profile.
   image-smoke:
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -98,3 +100,98 @@ jobs:
           [ -z "$ids" ] || docker rm -f -v $ids
           docker network ls -q --filter "name=seshat-verify-" | xargs -r docker network rm || true
           rm -rf "$SMOKE_DIR"
+
+  # Publishes the combined image to GHCR after the same checks passed. Never runs for pull requests (forks included) or
+  # other branches. The only job with write permissions; it uses the built-in GITHUB_TOKEN and no other secret.
+  publish-image:
+    needs: [build-and-test, image-smoke]
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    env:
+      IMAGE_NAME: ghcr.io/pascalwilbrink/seshat
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
+
+      - uses: docker/setup-buildx-action@f7ce87c1d6bead3e36075b2ce75da1f6cc28aaca # v3.9.0
+
+      - name: Log in to ghcr.io
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # main: `main`, `sha-<short>`. Tag vX.Y.Z: `X.Y.Z`, `X.Y`, `X`, `latest` (never from main).
+      - name: Image tags and labels
+        id: meta
+        uses: docker/metadata-action@318604b99e75e41977312d83839a89be02ca4893 # v5.9.0
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=main,enable=${{ github.ref == 'refs/heads/main' }}
+            type=sha,prefix=sha-,format=short,enable=${{ github.ref == 'refs/heads/main' }}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+          labels: |
+            org.opencontainers.image.title=Seshat
+            org.opencontainers.image.description=Remote knowledge and memory platform for AI agents (API and web UI)
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+
+      # No build secrets exist; the image holds no deployment-specific settings.
+      - name: Build and push (amd64, arm64)
+        id: push
+        uses: docker/build-push-action@4f58ea79222b3b9dc2c8bbdd6debcef730109a75 # v6.9.0
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          sbom: true
+          provenance: mode=max
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
+        with:
+          subject-name: ${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+
+      # Pull exactly what was pushed (by digest, amd64) and run the image checks against it.
+      - name: Verify the pushed digest
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          docker pull --platform linux/amd64 "$IMAGE_NAME@$DIGEST"
+          IMAGE="$IMAGE_NAME@$DIGEST" node docker/verify-image.mjs
+        timeout-minutes: 10
+
+      - name: Job summary
+        if: always()
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          {
+            echo "### Published image"
+            echo "- Image: \`$IMAGE_NAME\`"
+            echo "- Digest: \`${DIGEST:-not pushed}\`"
+            echo "- Tags:"
+            printf '%s\n' "$TAGS" | sed 's/^/  - `/; s/$/`/'
+          } >> "$GITHUB_STEP_SUMMARY"
