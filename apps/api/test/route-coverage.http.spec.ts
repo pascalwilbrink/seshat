@@ -4,7 +4,7 @@ import type { AddressInfo } from 'node:net';
 import { Controller, Delete, Get, type INestApplication, Module, Patch, Post, Put } from '@nestjs/common';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { TEST_ADMIN_ENV } from './fixtures/admin.js';
-import { catalogMismatches, expectedRouteStrings } from './helpers/scoped-endpoints.js';
+import { catalogMismatches, expectedRouteStrings, usageCatalogMismatches, usageRouteStrings } from './helpers/scoped-endpoints.js';
 
 /** A controller added by a hypothetical future feature, with no public marker of any kind. */
 @Controller('future-feature')
@@ -44,11 +44,15 @@ const EXPECTED_ROUTES: string[] = [
   'GET /api/global/files/:fileId',
   'GET /api/global/files/:fileId/chunks',
   'GET /api/global/files/:fileId/download',
+  'GET /api/global/files/:fileId/usage',
   'GET /api/global/memories',
   'GET /api/global/memories/:memoryId',
   'GET /api/global/memories/:memoryId/related',
+  'GET /api/global/memories/:memoryId/usage',
   'GET /api/global/overview',
   'GET /api/global/tags',
+  'GET /api/global/usage/top',
+  'GET /api/global/usage/unused',
   'GET /api/global/workspaces',
   'GET /api/health',
   'GET /api/workspaces/:workspaceId',
@@ -59,11 +63,15 @@ const EXPECTED_ROUTES: string[] = [
   'GET /api/workspaces/:workspaceId/files/:fileId',
   'GET /api/workspaces/:workspaceId/files/:fileId/chunks',
   'GET /api/workspaces/:workspaceId/files/:fileId/download',
+  'GET /api/workspaces/:workspaceId/files/:fileId/usage',
   'GET /api/workspaces/:workspaceId/memories',
   'GET /api/workspaces/:workspaceId/memories/:memoryId',
   'GET /api/workspaces/:workspaceId/memories/:memoryId/related',
+  'GET /api/workspaces/:workspaceId/memories/:memoryId/usage',
   'GET /api/workspaces/:workspaceId/overview',
   'GET /api/workspaces/:workspaceId/tags',
+  'GET /api/workspaces/:workspaceId/usage/top',
+  'GET /api/workspaces/:workspaceId/usage/unused',
   'GET /mcp',
   'POST /api/auth/login',
   'POST /api/auth/logout',
@@ -200,10 +208,29 @@ describe('default-deny route coverage', () => {
   });
 
   it('the HTTP isolation matrix enumerates exactly the Files, Collections and Tags routes that are registered', () => {
-    const scoped = (r: string) => /\/api\/(global|workspaces\/:workspaceId)\/(files|collections|tags)(\/|$)/.test(r);
+    const scoped = (r: string) => !/\/usage(\/|$)/.test(r) && /\/api\/(global|workspaces\/:workspaceId)\/(files|collections|tags)(\/|$)/.test(r);
     const production = routes.filter((r) => !r.path.startsWith('/api/future-feature')).map((r) => `${r.method} ${r.path}`).filter(scoped).sort();
     expect(production).toEqual(expectedRouteStrings());
     expect(catalogMismatches()).toEqual([]);
+  });
+
+  it('enumerates exactly the registered usage routes, all admin-only in the shared catalog', () => {
+    const production = routes.map((r) => `${r.method} ${r.path}`).filter((r) => /\/usage(\/|$)/.test(r)).sort();
+    expect(production).toEqual(usageRouteStrings());
+    expect(usageCatalogMismatches()).toEqual([]);
+  });
+
+  it('refuses every usage route without credentials, never echoing hostile ids or query values', async () => {
+    const SENTINEL = 'SENTINEL-hostile-usage-5b1c';
+    for (const route of usageRouteStrings()) {
+      const [method, tpl] = route.split(' ') as [string, string];
+      const p = tpl.replace(':workspaceId', SENTINEL).replace(/:[A-Za-z]+/g, SENTINEL);
+      const res = await fetch(`${base}${p}?resource=${SENTINEL}&days=${SENTINEL}&cursor=${SENTINEL}`, { method });
+      const text = await res.text();
+      expect(res.status, route).toBe(401);
+      expect(text, route).not.toContain(SENTINEL);
+      expect(res.headers.getSetCookie(), route).toEqual([]);
+    }
   });
 
   it('refuses every Files/Collections/Tags route without credentials, never echoing hostile ids, bodies or names', async () => {
