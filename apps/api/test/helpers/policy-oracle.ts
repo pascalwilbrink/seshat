@@ -64,6 +64,7 @@ export const EXPECTED: Record<string, Expected> = {
   'usage.unused': { kind: 'admin' },
   'usage.mcpCalls': { kind: 'admin' },
   'usage.mcpCall': { kind: 'admin' },
+  'usage.overview': { kind: 'admin' },
   'search.query': { kind: 'read', permission: 'search' },
 };
 

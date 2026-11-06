@@ -3,12 +3,12 @@ import { CurrentPrincipal } from '../auth/http.js';
 import type { Principal } from '../auth/principal.js';
 import { WorkspaceScopePipe } from '../scopes/scope-params.pipe.js';
 import { type ScopeRef, globalScope } from '../scopes/scope-ref.js';
-import type { ResourceUsageDto, UsageTopDto, UsageUnusedDto } from './usage.dto.js';
+import type { ResourceUsageDto, UsageOverviewDto, UsageTopDto, UsageUnusedDto } from './usage.dto.js';
 import { UsageService } from './usage.service.js';
 
 /**
- * Admin-only usage analytics, per scope: `files/:fileId/usage`, `memories/:memoryId/usage`, `usage/top` and
- * `usage/unused` under `/api/global` and `/api/workspaces/:workspaceId`.
+ * Admin-only usage analytics, per scope: `files/:fileId/usage`, `memories/:memoryId/usage`, `usage/top`,
+ * `usage/unused` and `usage/overview` under `/api/global` and `/api/workspaces/:workspaceId`.
  */
 @Controller()
 export class UsageController {
@@ -62,5 +62,15 @@ export class UsageController {
   @Get('workspaces/:workspaceId/usage/unused')
   unused(@CurrentPrincipal() p: Principal, @Param('workspaceId', new WorkspaceScopePipe()) scope: ScopeRef, @Query() q: unknown): Promise<UsageUnusedDto> {
     return this.usage.unused(p, scope, q);
+  }
+
+  @Get('global/usage/overview')
+  overviewGlobal(@CurrentPrincipal() p: Principal, @Query() q: unknown): Promise<UsageOverviewDto> {
+    return this.usage.overview(p, globalScope(), q);
+  }
+
+  @Get('workspaces/:workspaceId/usage/overview')
+  overview(@CurrentPrincipal() p: Principal, @Param('workspaceId', new WorkspaceScopePipe()) scope: ScopeRef, @Query() q: unknown): Promise<UsageOverviewDto> {
+    return this.usage.overview(p, scope, q);
   }
 }

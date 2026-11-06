@@ -68,6 +68,7 @@ export const USAGE_ADMIN_ENDPOINTS = [
   { action: 'usage.unused', method: 'GET', path: 'usage/unused', ok: 200 },
   { action: 'usage.mcpCalls', method: 'GET', path: 'mcp-calls', ok: 200 },
   { action: 'usage.mcpCall', method: 'GET', path: 'mcp-calls/:callId', ok: 200 },
+  { action: 'usage.overview', method: 'GET', path: 'usage/overview', ok: 200 },
 ] as const satisfies readonly { action: Action; method: 'GET'; path: string; ok: 200 }[];
 
 /** The Express route strings of the usage routes, in Global and in a Workspace. */
