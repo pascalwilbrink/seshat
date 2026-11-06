@@ -65,9 +65,12 @@ jobs:
     env:
       # Fixed names so the always-run cleanup can find the resources even if the script is killed.
       SMOKE_PROJECT: seshat-ci-smoke
-      SMOKE_DIR: ${{ runner.temp }}/seshat-smoke
       IMAGE: seshat-ci:build
     steps:
+      # The runner context is not available in job-level env, so the temp path is set here for all later steps.
+      - name: Set smoke directory
+        run: echo "SMOKE_DIR=$RUNNER_TEMP/seshat-smoke" >> "$GITHUB_ENV"
+
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
