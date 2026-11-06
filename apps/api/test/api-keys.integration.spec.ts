@@ -13,6 +13,7 @@ import {
   describeIntegration,
   type IsolatedSchema,
 } from './helpers/integration.js';
+import { migrationsFrom, revertThrough } from './helpers/migrations.js';
 
 describeIntegration('API keys (real PostgreSQL)', () => {
   let iso: IsolatedSchema;
@@ -57,14 +58,14 @@ describeIntegration('API keys (real PostgreSQL)', () => {
     });
 
     it('down drops the table, up recreates it (reversible)', async () => {
-      const names = ds.migrations.map((m) => m.constructor.name);
-      // Newer migrations (files, Collections, Tags, cleanup ledger, chunks) sit on top of it: revert them first.
-      expect(names.at(-9)).toBe('CreateApiKeys1762500000000');
-      for (let i = 0; i < 9; i += 1) await ds.undoLastMigration({ transaction: 'each' });
+      const MIGRATION = 'CreateApiKeys1762500000000';
+      // Newer migrations sit on top of it: revert them and this one, by name, so new migrations never break this test.
+      const expected = migrationsFrom(ds, MIGRATION);
+      await revertThrough(ds, MIGRATION);
       expect(await ds.query(`SELECT to_regclass('"${iso.schema}".api_keys') AS t`)).toEqual([{ t: null }]);
       expect(await ds.query(`SELECT to_regclass('"${iso.schema}".workspaces') AS t`)).not.toEqual([{ t: null }]);
       const again = await ds.runMigrations({ transaction: 'each' });
-      expect(again.map((m) => m.name)).toEqual(['CreateApiKeys1762500000000', 'CreateFilesCollectionsTags1762600000000', 'CreateStorageCleanupIntents1762700000000', 'CreateChunks1762800000000', 'CreateMemories1762900000000', 'AddMemoryEmbeddingGeneration1763000000000', 'AddKeywordSearchVectors1763100000000', 'AddFileProvenance1763200000000', 'CreateUsage1763300000000']);
+      expect(again.map((m) => m.name)).toEqual(expected);
       expect(await ds.runMigrations({ transaction: 'each' })).toEqual([]);
     });
   });

@@ -28,10 +28,12 @@ ENV MAX_UPLOAD_BYTES=${MAX_UPLOAD_BYTES}
 RUN pnpm build \
  && mkdir -p apps/web/public
 # Production dependency closure of the API (workspace package @seshat/domain included, no dev tooling) plus its build output.
+# `pnpm deploy` copies every package file, including `.env.example`; env files never belong in the image.
 RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
     pnpm --filter @seshat/api deploy --prod --legacy /out/api \
  && rm -rf /out/api/dist && cp -r apps/api/dist /out/api/dist \
- && rm -f /out/api/.env.example && rm -rf /out/api/src /out/api/test /out/api/scripts /out/api/vitest.config.ts /out/api/tsconfig.json
+ && rm -rf /out/api/src /out/api/test /out/api/scripts /out/api/vitest.config.ts /out/api/tsconfig.json \
+ && find /out/api -name '.env*' -not -path '*/node_modules/*' -delete
 
 # ---- runtime ----
 FROM node:${NODE_VERSION}-bookworm-slim AS runtime
