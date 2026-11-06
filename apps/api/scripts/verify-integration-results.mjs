@@ -2,7 +2,7 @@
 // Usage: node scripts/verify-integration-results.mjs <vitest-json-results-file>
 import { readFileSync } from 'node:fs';
 
-const REQUIRED = ['migrations', 'vector-column', 'health', 'mcp-e2e', 'usage-storage'];
+const REQUIRED = ['migrations', 'vector-column', 'health', 'mcp-e2e', 'usage-storage', 'usage-privacy'];
 const file = process.argv[2];
 if (!file) {
   console.error('usage: verify-integration-results.mjs <results.json>');

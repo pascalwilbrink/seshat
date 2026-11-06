@@ -1103,6 +1103,35 @@ filters filling `limit`, and keyword-only degradation. CI sets `REQUIRE_INTEGRAT
 saved searches, rerankers, search over original
 file bytes, and totals or facets. The MCP tools are thin wrappers over the retrieval services with the key's principal.
 
+## Usage insights
+
+Seshat counts how often Files and Memories are accessed and keeps a history of MCP tool calls, so an admin can see what agents actually use. Everything here is **best effort**: insights, not accounting.
+
+### Counting rules
+
+- A **File** or **Memory** access is `read` (the item itself was requested: `GET` detail, download, `get_file`, `get_file_chunks`; lists such as `list_memories` are not reads) or `retrieved` (it was returned by search, context or related). Channels: `ui` (admin session), `api` (REST with an API key) and `mcp`.
+- A File counts **once per request**, however many of its chunks are returned. Counting happens only after a successful (2xx) response for an authenticated caller.
+- Never counted: lists, writes (upload, create, update, supersede, delete), failed, denied or concealed (404) requests, system reads such as ingestion and re-indexing, and unauthenticated requests.
+- MCP counts the **final result only**: a call that ends in an error result counts nothing.
+
+### Recording is buffered, batched and lossy
+
+Recording never adds a database write to the request path and never changes or fails a request. Increments are aggregated in memory and flushed in batches about every 5 seconds and on graceful shutdown (before the database connection closes). A failed batch is retried once with the same batch id (so an uncertain commit cannot count twice); after the second failure it is dropped and only counts are logged. Increments can therefore be **lost** after a failed retry, a full buffer (bounded, overflow is dropped) or a process crash. Counts appear shortly after, not instantly.
+
+### What is stored
+
+- Per File and Memory: daily counters per channel and kind, lifetime totals (all time, per channel and kind) and `last_accessed_at`.
+- Per MCP `tools/call`: time, Workspace, key id and a **snapshot of the key name** at that time, client name and version (when the call asserts one), tool, outcome, duration, result size, truncation and the ids of touched resources. `tools/list` is counted per key per day. Rejected (401) requests are not recorded.
+- **Privacy:** each tool has an allowlisted argument summary (ids, closed enums, booleans and bounded numbers; for uploads the file name and size). Search queries, file and memory content, titles, metadata, tag names, cursors and error messages are never stored, never logged and never returned by a usage or history API. `test/usage-privacy.integration.spec.ts` plants sentinels in all of them and scans every usage table, the logs and every analytics response.
+
+### Admin only
+
+The usage, top, unused, MCP call list and detail, and overview routes (`GET .../files/:fileId/usage`, `.../memories/:memoryId/usage`, `.../usage/top`, `.../usage/unused`, `.../usage/overview`, `.../mcp-calls`, `.../mcp-calls/:callId`, each under `/api/global` and `/api/workspaces/:workspaceId`) and the access columns in the File and Memory lists (`accessCount30d`, `lastAccessedAt`) are admin only. API keys get `403`; unauthenticated callers `401`; a foreign or unknown id gives the same `404`. The UI shows them on the Overview, the File and Memory pages and the Workspace MCP page.
+
+### Retention and deletion
+
+Usage rows are deleted with their File, Memory or Workspace (cascade). A daily pg-boss job (03:15 UTC) prunes daily counters older than `USAGE_RETENTION_DAYS` (default `365`) and MCP call history plus `tools/list` counters older than `MCP_CALL_RETENTION_DAYS` (default `90`). Lifetime totals and `last_accessed_at` are **never** pruned, so totals stay correct after the daily rows are gone. Call rows keep their key-name snapshot after the key is revoked or deleted.
+
 ## Workspace API keys
 A Workspace API key is a credential owned by exactly one Workspace, for agents and applications. It is managed by the
 admin and carries an explicit list of permissions. Key management, authentication and the authorization policy
