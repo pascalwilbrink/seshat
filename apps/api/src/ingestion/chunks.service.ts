@@ -1,6 +1,7 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { getDataSourceToken } from '@nestjs/typeorm';
 import type { DataSource } from 'typeorm';
+import { UsageCollector } from '../usage/usage-request-context.js';
 import { AuthorizationService } from '../auth/authorization.service.js';
 import type { Principal } from '../auth/principal.js';
 import { type ScopeRef, isUuid } from '../scopes/scope-ref.js';
@@ -18,6 +19,7 @@ export class ChunksService {
   constructor(
     @Inject(getDataSourceToken()) private readonly dataSource: DataSource,
     @Inject(AuthorizationService) private readonly authorization: AuthorizationService,
+    @Optional() @Inject(UsageCollector) private readonly usage?: UsageCollector,
   ) {}
 
   async list(principal: Principal, scope: ScopeRef, fileId: string, rawQuery: unknown): Promise<ChunkPage> {
@@ -38,6 +40,7 @@ export class ChunksService {
     const hasMore = rows.length > q.limit;
     const page = hasMore ? rows.slice(0, q.limit) : rows;
     const last = page[page.length - 1];
+    this.usage?.stage({ resourceKind: 'file', resourceId: id, scope, accessKind: 'read' });
     return { items: page.map(toChunkDto), nextCursor: hasMore && last ? String(last.ordinal) : null, hasMore, limit: q.limit };
   }
 }

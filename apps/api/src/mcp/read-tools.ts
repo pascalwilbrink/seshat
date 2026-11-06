@@ -13,8 +13,8 @@ import { SearchService } from '../search/search.service.js';
 import { TagsService } from '../tags/tags.service.js';
 import { mcpIdSchema } from './mcp-errors.js';
 import { MCP_TOOL_REGISTRY, McpToolRegistry, type McpToolContext, type McpToolDefinition } from './mcp-registry.js';
-import type { ToolOutput } from './mcp-results.js';
-import { wrapRetrieved } from './mcp-results.js';
+import type { EmittedResource, ToolOutput } from './mcp-results.js';
+import { renderedItem, wrapRetrieved } from './mcp-results.js';
 import { readScopeFields, resolveReadScope, workspaceScopeOf } from './mcp-scope.js';
 import type { Action } from '@seshat/domain';
 
@@ -37,6 +37,16 @@ function chunkLabel(fileId: string, ordinal: number): string {
 /** Content wrapped in a data block; everything else in the DTO is metadata and passes through unchanged. */
 function wrapMemory<T extends { id: string; content: string }>(m: T): T {
   return { ...m, content: wrapRetrieved(`memory ${m.id}`, m.content) };
+}
+
+/** Resources behind wrapped results (chunk -> its File), with the probe of the item as it is rendered. */
+function emittedOf(items: readonly { kind: string; id: string; file?: { id: string } }[]): EmittedResource[] {
+  const out: EmittedResource[] = [];
+  for (const r of items) {
+    if (r.kind === 'chunk' && r.file) out.push({ resourceKind: 'file', resourceId: r.file.id, probe: renderedItem(r) });
+    else if (r.kind === 'memory') out.push({ resourceKind: 'memory', resourceId: r.id, probe: renderedItem(r) });
+  }
+  return out;
 }
 
 function wrapResult<T extends { kind: string; id: string; content: string }>(r: T): T {
@@ -148,7 +158,8 @@ export class McpReadTools implements OnModuleInit {
         ['search.query'],
         async (input, ctx) => {
           const found = await this.search.search(ctx.principal, workspaceScopeOf(ctx.principal), input);
-          return { structured: { ...found, results: found.results.map(wrapResult) } };
+          const results = found.results.map(wrapResult);
+          return { structured: { ...found, results }, emitted: emittedOf(results) };
         },
       ),
       this.def(
@@ -157,7 +168,16 @@ export class McpReadTools implements OnModuleInit {
         workspaceContextRequestSchema,
         ['search.query'],
         // The context text is already delimited, escaped and capped by the context formatter, so it is not wrapped twice.
-        async (input, ctx) => ({ structured: { ...(await this.search.context(ctx.principal, workspaceScopeOf(ctx.principal), input)) } }),
+        async (input, ctx) => {
+          const found = await this.search.context(ctx.principal, workspaceScopeOf(ctx.principal), input);
+          // A source is emitted when the context text still holds its closing marker (the text is what gets capped).
+          const emitted: EmittedResource[] = found.sources.map((s) => ({
+            resourceKind: s.kind === 'chunk' ? 'file' : 'memory',
+            resourceId: s.kind === 'chunk' ? s.file.id : s.id,
+            probe: `<<<END [${s.citation}]>>>`,
+          }));
+          return { structured: { ...found }, emitted };
+        },
       ),
       this.def(
         'recall',
@@ -178,7 +198,8 @@ export class McpReadTools implements OnModuleInit {
             ...input,
             types: ['memories'],
           } as z.infer<typeof workspaceSearchRequestSchema>);
-          return { structured: { ...found, results: found.results.map(wrapResult) } };
+          const results = found.results.map(wrapResult);
+          return { structured: { ...found, results }, emitted: emittedOf(results) };
         },
       ),
       this.def(
@@ -213,7 +234,8 @@ export class McpReadTools implements OnModuleInit {
         async (input, ctx) => {
           const { memoryId, ...query } = input;
           const found = await this.related.related(ctx.principal, workspaceScopeOf(ctx.principal), memoryId, query);
-          return { structured: { ...found, results: (found.results as { id: string; content: string; kind: string }[]).map(wrapResult) } };
+          const results = (found.results as { id: string; content: string; kind: string }[]).map(wrapResult);
+          return { structured: { ...found, results }, emitted: emittedOf(results) };
         },
       ),
     ];

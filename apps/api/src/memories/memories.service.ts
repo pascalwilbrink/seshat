@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Inject, Injectable, NotFoundExc
 import { accessSummaries } from '../usage/usage-summaries.js';
 import { getDataSourceToken } from '@nestjs/typeorm';
 import type { DataSource, EntityManager } from 'typeorm';
+import { UsageCollector } from '../usage/usage-request-context.js';
 import { AuthorizationService } from '../auth/authorization.service.js';
 import type { Principal } from '../auth/principal.js';
 import { type ScopeRef, isUuid, scopeColumns } from '../scopes/scope-ref.js';
@@ -101,6 +102,7 @@ export class MemoriesService {
     @Inject(AuthorizationService) private readonly authorization: AuthorizationService,
     @Inject(TagsService) private readonly tags: TagsService,
     @Optional() @Inject(MEMORY_EMBEDDING_COORDINATOR) private readonly embeddings?: MemoryEmbeddingCoordinator,
+    @Optional() @Inject(UsageCollector) private readonly usage?: UsageCollector,
   ) {}
 
   /**
@@ -176,7 +178,9 @@ export class MemoriesService {
     this.authorization.assertCan(principal, 'memory.get', scope);
     if (!isUuid(memoryId)) throw new NotFoundException(NOT_FOUND);
     await this.assertScopeExists(scope);
-    return this.load(this.dataSource.manager, scopeKeyOf(scope), memoryId.toLowerCase());
+    const dto = await this.load(this.dataSource.manager, scopeKeyOf(scope), memoryId.toLowerCase());
+    this.usage?.stage({ resourceKind: 'memory', resourceId: dto.id, scope, accessKind: 'read' });
+    return dto;
   }
 
   /**

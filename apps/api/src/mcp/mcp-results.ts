@@ -34,7 +34,16 @@ export function capText(text: string, maxChars: number): { text: string; truncat
   return { text: `${text.slice(0, keep)}${note}`.slice(0, Math.max(maxChars, 0)), truncated: true };
 }
 
+/** A retrieved resource the output shows, with a probe: text that appears in the default rendering iff it was emitted. */
+export interface EmittedResource {
+  resourceKind: 'file' | 'memory';
+  resourceId: string;
+  probe: string;
+}
+
 export interface ToolOutput {
+  /** Resources shown by a search-like result, so usage counts only what survives result capping. */
+  emitted?: EmittedResource[];
   /** Structured result (plain JSON). */
   structured: Record<string, unknown>;
   /** Text rendering; defaults to pretty JSON of `structured`. Retrieved content in it should use `wrapRetrieved`. */
@@ -56,6 +65,27 @@ export function toolResult(output: ToolOutput, maxChars: number): CallToolResult
       ? output.structured
       : { truncated: true, note: truncationNote(maxChars) },
   };
+}
+
+/**
+ * Which `emitted` resources the caller really receives. All of them when the structured content fits; otherwise the
+ * structured content is replaced and only the capped text rendering carries data, so a resource counts only when its
+ * probe is still fully inside that text. Resource identity only, never content, is returned.
+ */
+export function emittedResourceKeys(output: ToolOutput, maxChars: number): Set<string> {
+  const keys = new Set<string>();
+  const emitted = output.emitted ?? [];
+  if (emitted.length === 0) return keys;
+  const structuredFits = JSON.stringify(output.structured).length <= maxChars;
+  const text = structuredFits ? '' : capText(output.text ?? JSON.stringify(output.structured, null, 2), maxChars).text;
+  for (const e of emitted) if (structuredFits || text.includes(e.probe)) keys.add(`${e.resourceKind}|${e.resourceId}`);
+  return keys;
+}
+
+/** The default text rendering of one item at `depth` array nesting inside the pretty-printed structured content. */
+export function renderedItem(item: unknown, indent = 4): string {
+  const pad = ' '.repeat(indent);
+  return JSON.stringify(item, null, 2).split('\n').map((l) => `${pad}${l}`).join('\n').trimStart();
 }
 
 /** A tool error result (`isError: true`) with a single short fixed message. */
