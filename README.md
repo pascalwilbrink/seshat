@@ -61,13 +61,16 @@ Present:
 
 Also present: CI (build and tests with required integration tests, see [CI](#ci)).
 
-Planned (does not exist yet): recall tools, relationships between Memories beyond
-supersession, automatic extraction of Memories, ingestors for formats other than `txt` and `md`, other storage backends, a
-release/deploy pipeline, and a Dockerfile. The target is one application container plus one Postgres database. There is
-no single Docker image today.
+Also present: a multi-stage `Dockerfile` (one non-root image with the API and the web UI), the opt-in Compose `app`
+profile and a CI image build with a smoke test (see [Run with Docker](#run-with-docker)).
+
+Planned (does not exist yet): relationships between Memories beyond supersession, automatic extraction of Memories,
+ingestors for formats other than `txt` and `md`, other storage backends, and a release/deploy pipeline (including
+publishing the image to a registry). The target is one application container plus one Postgres database.
 
 ## Run and develop
-Requires Node.js, pnpm (the repo pins `pnpm@10.28.0`) and Docker for the database.
+Requires Node.js, pnpm (the repo pins `pnpm@10.28.0`) and Docker for the database. To run the whole app in Docker
+instead, see [Run with Docker](#run-with-docker).
 
 ```sh
 pnpm install   # install dependencies
@@ -189,6 +192,206 @@ default is shown with a notice. MCP clients connect to the API port directly, no
   `401 Invalid credentials`. Behind a reverse proxy set `TRUST_PROXY` so the real client IP is used; leave it
   unset otherwise, because trusting `X-Forwarded-For` lets clients dodge the limit.
 - Passwords, hashes, secrets and cookies never appear in logs, errors or responses.
+
+## Run with Docker
+One image runs the API (port 4200) and the web UI (port 3000) under `tini` as a non-root user; Postgres is a separate
+container. The image is built locally from this checkout and is never pushed to a registry (there is no published
+image). The `app` Compose profile builds and starts both. Without the profile, `docker compose up -d db` still starts
+only the development database, and the `pnpm` workflow in [Run and develop](#run-and-develop) is unchanged.
+
+Requirements: Docker Engine with BuildKit (the Dockerfile uses cache mounts) and Docker Compose 2.24 or newer (the
+optional `env_file` syntax). Check with `docker compose version`.
+
+### Configure
+The Compose app reads the **root** `.env`, not `apps/api/.env`. Both files are Git-ignored: keep them private
+(`chmod 600 .env`), never commit them and never paste them into logs or issues. Avoid `docker compose config`: it prints
+the expanded secrets.
+
+```sh
+cp .env.example .env
+```
+
+| Variable | Required | Notes |
+| --- | --- | --- |
+| `ADMIN_USERNAME` | yes | The single admin's username. |
+| `ADMIN_PASSWORD_HASH` | yes | Argon2id hash, see below. Single quotes, always. |
+| `SESSION_SECRET` | yes | At least 32 characters, random: `openssl rand -base64 48`. |
+| `API_KEY_PEPPER` | yes | At least 32 characters, random and different from `SESSION_SECRET`. |
+| `OPENAI_API_KEY` | yes | Embeddings (the API refuses to start without it). |
+| `DATABASE_URL` | set by Compose | The `app` service overrides it with `postgres://$POSTGRES_USER:$POSTGRES_PASSWORD@db:5432/$POSTGRES_DB`. A value in `.env` is ignored under Compose; set it yourself only when you run the image with plain `docker run` against another database. |
+| `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | no | Default `seshat`/`seshat`/`seshat`. They apply only when the `pgdata` volume is first created; change the password to a URL-safe random value (`openssl rand -hex 24`) on any shared host. |
+| `EMBEDDING_MODEL`, `EMBEDDING_DIMENSION`, `INGESTION_CONCURRENCY`, `CHUNK_SIZE_CHARS`, `CHUNK_OVERLAP_CHARS`, `MEMORY_SIMILARITY_HINT`, `MAX_UPLOAD_BYTES`, `MCP_MAX_UPLOAD_BYTES`, `MCP_MAX_RESULT_CHARS`, `TRUST_PROXY` | no | Same meaning and defaults as in the [configuration table](#configuration-appsapi). `EMBEDDING_DIMENSION` must stay `1536`. |
+
+**Admin password hash.** Generate it with the existing command from a checkout with dependencies installed
+(`pnpm install`); it prompts for the password without echo and prints only the hash:
+
+```sh
+pnpm --filter @seshat/api admin:hash-password
+```
+
+The slim image has no `pnpm` or `tsx`, so the command cannot run inside it. An equivalent that needs no checkout uses
+the `argon2` package already in the image (same call as `hashPassword`: argon2id, library defaults):
+
+```sh
+printf '%s' 'your-password-12-to-256-chars' | docker run --rm -i -w /app/apps/api --entrypoint node seshat:local \
+  --input-type=module -e "let d='';process.stdin.on('data',c=>d+=c).on('end',async()=>{const a=(await import('argon2')).default;console.log(await a.hash(d,{type:a.argon2id}))})"
+```
+
+This puts the password in your shell history; prefer the prompt-based command, or read it from a file
+(`< password.txt`) and delete the file. Paste the printed hash into `.env` **between single quotes**:
+
+```sh
+ADMIN_PASSWORD_HASH='$argon2id$v=19$m=65536,t=3,p=4$...'
+```
+
+Compose expands `$name` in `.env` values, so an unquoted or double-quoted hash is silently corrupted; single quotes pass
+it through unchanged. Use single quotes for any other value containing `$`.
+
+**Stable secrets.** Back up `.env`'s `SESSION_SECRET` and `API_KEY_PEPPER` with your database backups. Changing
+`SESSION_SECRET` signs everyone out; changing `API_KEY_PEPPER` invalidates **every** Workspace API key, so MCP clients
+stop working until new keys are created. They cannot be recovered from the database.
+
+### Build, start and stop
+```sh
+docker compose --profile app up -d --build   # build the image, start db and app
+docker compose --profile app ps              # app is "healthy" after the start period (up to about a minute)
+docker compose --profile app logs -f app     # follow the logs
+docker compose --profile app stop            # graceful stop, data is kept
+docker compose --profile app start           # start again
+docker compose --profile app down            # remove containers, KEEP the volumes
+```
+
+Open <http://localhost:3000> and log in with `ADMIN_USERNAME` and your password.
+
+**Image defaults** (already set; override in `.env` only when needed): `NODE_ENV=production`, `DB_MIGRATE_ON_START=true`
+(pending migrations run before the API listens), `FILE_STORAGE_DIR=/data/files` (the `files` volume; do not change) and
+`API_URL=http://127.0.0.1:4200`. `PORT` is managed by the image (API 4200, web 3000); do not set it.
+
+**`API_URL` and `NEXT_PUBLIC_SESHAT_MCP_URL` are build-time settings.** Next.js bakes the `/api/*` rewrite and the public
+variable into the build, so a runtime `environment:` entry does not change them. `API_URL` is the loopback address because
+both processes share the container; leave it. `NEXT_PUBLIC_SESHAT_MCP_URL` is the MCP address the Workspace MCP page
+shows (default `http://localhost:4200/mcp`); behind a public hostname rebuild with it, for example
+`docker build --build-arg NEXT_PUBLIC_SESHAT_MCP_URL=https://seshat.example.com/mcp -t seshat:local .` or an `args:`
+entry under `build:` in `docker-compose.yml`.
+
+**Ports.** `3000` is the web UI (it also proxies `/api/*` to the API); `4200` is the API and the MCP endpoint
+(`/mcp`). MCP clients connect to 4200 directly, never through the web app. Change the host side with `SESHAT_WEB_PORT`
+and `SESHAT_API_PORT` in `.env`. Both are published on all interfaces: behind a reverse proxy, firewall them. The
+database is published on `127.0.0.1:${DB_HOST_PORT:-5432}` only.
+
+**Shutdown and restarts.** The entrypoint starts both processes, forwards `SIGTERM` to them and exits non-zero as soon as
+either one exits, so `restart: unless-stopped` restarts the whole container. `docker compose stop` gives the API time to
+drain the pg-boss workers and close the pool (Compose's default is a 10 s grace period; raise it with `stop_grace_period`
+if you run long ingestion jobs; interrupted jobs are retried after a restart).
+
+### Volumes and permissions
+Two named volumes hold all state: `pgdata` (Postgres) and `files` (original uploads at `/data/files`). Compose prefixes
+them with the project name (`docker volume ls`). The container runs as the `node` user (uid 1000) and a fresh named volume
+inherits the image's ownership, so no setup is needed. If you replace `files` with a bind mount, make it writable by
+uid 1000 (`sudo chown 1000:1000 ./files`); an unwritable directory stops startup with an error that does not print the
+path. Never run `docker compose down -v` for an upgrade or restart: `-v` deletes both volumes, and with them every file
+and the whole database.
+
+### Troubleshooting
+- `docker compose --profile app ps` shows `unhealthy` or restarting: read `docker compose --profile app logs app`.
+  The health check calls `GET http://127.0.0.1:4200/api/health` inside the container; from the host:
+  `curl -s http://localhost:4200/api/health` must answer `{"status":"ok","db":"ok"}`; `503` with `db: unreachable` means
+  the database is down or `DATABASE_URL` is wrong.
+- Invalid configuration (a missing or short secret, a bad hash) stops the container with a message that names the
+  variable and never its value. A failing migration stops it with `Database migration failed`; the first migration needs
+  a database role that may `CREATE EXTENSION vector` (the Compose `db` user may).
+- Login works but the session is dropped: see [TLS and a reverse proxy](#tls-and-a-reverse-proxy).
+- The admin cannot log in after pasting the hash: it was probably unquoted (see above).
+
+### Upgrade
+1. Back up the database and the files volume (next section) and keep `.env`.
+2. Update the checkout (`git pull`), then `docker compose --profile app up -d --build`. Compose rebuilds the image and
+   recreates only the `app` container against the existing volumes.
+3. With `DB_MIGRATE_ON_START=true` pending migrations run before the API listens, and `ps` shows `healthy` only once
+   they are applied. If one fails the container stops and restarts in a loop; read the log, fix the cause, and the next
+   start retries. Migrations are not rolled back automatically.
+4. Stay compatible: newer code runs against an older schema only after its migrations ran, and older code is not
+   guaranteed to run against a newer schema. Do not start an older image against a database an upgrade already migrated;
+   to go back, restore the pre-upgrade backups together with the older code. Do not change `EMBEDDING_DIMENSION`
+   (see [Ingestion](#ingestion)).
+
+### Backup and restore
+A consistent backup needs the database and the files volume from the same moment. Stop the app first so that no upload,
+deletion or ingestion job changes either (keep the database running):
+
+```sh
+docker compose --profile app stop app
+mkdir -p backup
+# Database (custom format; credentials come from the db container's own environment)
+docker compose exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > backup/seshat.dump
+# Files volume
+docker compose --profile app run --rm --no-deps -T --entrypoint tar app czf - -C /data/files . > backup/files.tgz
+docker compose --profile app start app
+```
+
+Restore into a stopped app (the existing data is replaced):
+
+```sh
+docker compose --profile app stop app
+docker compose exec -T db sh -c 'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists --no-owner' < backup/seshat.dump
+docker compose --profile app run --rm --no-deps -T --entrypoint sh app -c 'rm -rf /data/files/* /data/files/.[!.]* ; tar xzf - -C /data/files' < backup/files.tgz
+docker compose --profile app start app
+```
+
+Keep the backups private: they contain every original file and Memory. Test a restore on a disposable Compose project
+(`docker compose -p seshat-restore-test ...` with other `SESHAT_*_PORT`/`DB_HOST_PORT` values) before you rely on it.
+
+### TLS and a reverse proxy
+Outside `NODE_ENV=development` the session cookie is `Secure`, and the image sets `NODE_ENV=production`. Browsers
+generally accept it on `http://localhost`, but over plain HTTP on any other host name or IP the login succeeds and the
+session is dropped. Serve the UI over HTTPS in front of port 3000.
+
+Route `/mcp` **directly to the API on 4200**, never through the web app: `/mcp` is served by the API outside
+the `/api` prefix, so the web app's `/api/*` rewrite does not carry it, and an extra hop would only add buffering. Example (nginx; adapt the certificate paths and host name):
+
+```nginx
+server {
+  listen 443 ssl;
+  server_name seshat.example.com;
+  ssl_certificate     /etc/ssl/seshat/fullchain.pem;
+  ssl_certificate_key /etc/ssl/seshat/privkey.pem;
+  client_max_body_size 60m;            # at least MAX_UPLOAD_BYTES; /mcp bodies are base64 (about 1.4x MCP_MAX_UPLOAD_BYTES)
+
+  location = /mcp {
+    proxy_pass http://127.0.0.1:4200;
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+    proxy_buffering off;               # streamed responses reach the client unbuffered
+    proxy_request_buffering off;
+    proxy_read_timeout 3600s;          # long-running tool calls and streams
+    proxy_send_timeout 3600s;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Forwarded-Proto $scheme;
+  }
+
+  location / {                         # UI and /api/*
+    proxy_pass http://127.0.0.1:3000;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Forwarded-Proto $scheme;
+  }
+}
+```
+
+Set `TRUST_PROXY` in `.env` to the number of trusted proxy hops in front of the API process, otherwise every login
+attempt counts against the proxy's address (the 5-per-minute login limit) or, if set too high, a client can forge its
+address. Direct `/mcp` traffic has one hop (your proxy). Logins through the UI pass through the proxy and the Next
+rewrite; check the hop count for your setup before relying on the per-IP limit. Then set the MCP URL shown in the UI as
+described above and create a Workspace API key (see [Connect an agent over MCP](#connect-an-agent-over-mcp)).
+
+### What CI checks
+The `image-smoke` job in `.github/workflows/ci.yml` builds the image on the runner (nothing is pushed), runs
+`docker/verify-image.mjs` (image contents, non-root user, startup failures for invalid configuration and failed
+migrations, supervisor behaviour) and `docker/smoke.mjs`: with the real app profile and throwaway secrets it asserts
+`/api/health` returns `db: ok`, the login page on 3000 loads, the same-origin `/api/health` reaches the API, and `/mcp`
+answers `401` with `WWW-Authenticate: Bearer` without a valid key. It does not log in, ingest files or call MCP tools,
+and it does not test backups, upgrades or a reverse proxy.
 
 ## Scopes, routes and authorization
 - **Global is a scope, not a Workspace.** Every scoped resource is Global or in exactly one Workspace.
