@@ -15,3 +15,4 @@ Approved specs recorded by Gilde. Each file is the byte-exact body of one approv
 | seshat-memories | Seshat: typed Memories with provenance, tags, embeddings and supersession | 1 | [seshat-memories.md](seshat-memories.md) |
 | seshat-docker-packaging | Seshat: one Docker image running the API, MCP and web UI | 1 | [seshat-docker-packaging.md](seshat-docker-packaging.md) |
 | seshat-mcp-server | Seshat: MCP server over Streamable HTTP with permission-gated file, memory and search tools | 1 | [seshat-mcp-server.md](seshat-mcp-server.md) |
+| seshat-usage-insights | Seshat: usage insights: access counts for Files and Memories, MCP call history and dashboard charts | 1 | [seshat-usage-insights.md](seshat-usage-insights.md) |
