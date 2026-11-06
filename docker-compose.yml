@@ -25,7 +25,9 @@ services:
     profiles: ['app']
     build:
       context: .
-    image: seshat:local
+    # Local build by default. Set SESHAT_IMAGE (e.g. ghcr.io/pascalwilbrink/seshat:1.2.3) and use
+    # `docker compose --profile app pull app && docker compose --profile app up -d --no-build` to run a published image.
+    image: ${SESHAT_IMAGE:-seshat:local}
     env_file:
       - path: .env
         required: false

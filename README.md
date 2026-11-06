@@ -129,10 +129,10 @@ pnpm dev       # API on :4200 and web on :3000
 | `TEST_DATABASE_URL` | tests only | Disposable database whose name contains `test`. |
 
 Invalid configuration stops startup with a message that names the variable but never prints its value.
-`apps/web` reads one server-side variable, `API_URL` (default `http://localhost:4200`, never `NEXT_PUBLIC_`), and one public,
-build-time variable, `NEXT_PUBLIC_SESHAT_MCP_URL` (default `http://localhost:4200/mcp`): the API's public MCP address shown on the
-Workspace MCP page (`/w/<slug>/mcp`). It must be an absolute http(s) URL without credentials, query or fragment; otherwise the
-default is shown with a notice. MCP clients connect to the API port directly, not through the web app.
+`apps/web` reads one server-side variable, `API_URL` (default `http://localhost:4200`, never `NEXT_PUBLIC_`), and one runtime
+variable, `SESHAT_MCP_URL` (default `http://localhost:4200/mcp`): the API's public MCP address shown on the
+Workspace MCP page (`/w/<slug>/mcp`), read by the server on each request. It must be an absolute http(s) URL ending in `/mcp`
+without credentials, query or fragment; otherwise the default is shown with a notice. MCP clients connect to the API port directly, not through the web app.
 
 ### Database and migrations
 - `docker compose up -d db` starts the development database (`pgvector/pgvector:pg17`, local-only credentials
@@ -195,8 +195,8 @@ default is shown with a notice. MCP clients connect to the API port directly, no
 
 ## Run with Docker
 One image runs the API (port 4200) and the web UI (port 3000) under `tini` as a non-root user; Postgres is a separate
-container. The image is built locally from this checkout and is never pushed to a registry (there is no published
-image). The `app` Compose profile builds and starts both. Without the profile, `docker compose up -d db` still starts
+container. You can build it locally from this checkout or pull the [published image](#published-images). The `app`
+Compose profile builds (or runs) and starts both. Without the profile, `docker compose up -d db` still starts
 only the development database, and the `pnpm` workflow in [Run and develop](#run-and-develop) is unchanged.
 
 Requirements: Docker Engine with BuildKit (the Dockerfile uses cache mounts) and Docker Compose 2.24 or newer (the
@@ -267,12 +267,17 @@ Open <http://localhost:3000> and log in with `ADMIN_USERNAME` and your password.
 (pending migrations run before the API listens), `FILE_STORAGE_DIR=/data/files` (the `files` volume; do not change) and
 `API_URL=http://127.0.0.1:4200`. `PORT` is managed by the image (API 4200, web 3000); do not set it.
 
-**`API_URL` and `NEXT_PUBLIC_SESHAT_MCP_URL` are build-time settings.** Next.js bakes the `/api/*` rewrite and the public
-variable into the build, so a runtime `environment:` entry does not change them. `API_URL` is the loopback address because
-both processes share the container; leave it. `NEXT_PUBLIC_SESHAT_MCP_URL` is the MCP address the Workspace MCP page
-shows (default `http://localhost:4200/mcp`); behind a public hostname rebuild with it, for example
-`docker build --build-arg NEXT_PUBLIC_SESHAT_MCP_URL=https://seshat.example.com/mcp -t seshat:local .` or an `args:`
-entry under `build:` in `docker-compose.yml`.
+**`API_URL` is a build-time setting; `SESHAT_MCP_URL` is a runtime setting.** Next.js bakes the `/api/*` rewrite into
+the build, so `API_URL` cannot be changed with `environment:`; it is the loopback address because both processes share
+the container, so leave it. `SESHAT_MCP_URL` is the MCP address the Workspace MCP page shows (default
+`http://localhost:4200/mcp`); set it in `.env` or `environment:` to the public address, for example
+`SESHAT_MCP_URL=https://seshat.example.com/mcp`, and restart the container. No rebuild is needed.
+
+**Upload limit.** The web proxy's request body limit follows `MAX_UPLOAD_BYTES` **at build time** (default 50 MB plus 1 MB
+multipart overhead). The published image uses the default. If the
+API's `MAX_UPLOAD_BYTES` is larger, build a custom image with
+`docker build --build-arg MAX_UPLOAD_BYTES=104857600 -t seshat:local .` (or `args:` under `build:` in
+`docker-compose.yml`) and set the same value in `.env` at runtime.
 
 **Ports.** `3000` is the web UI (it also proxies `/api/*` to the API); `4200` is the API and the MCP endpoint
 (`/mcp`). MCP clients connect to 4200 directly, never through the web app. Change the host side with `SESHAT_WEB_PORT`
@@ -302,6 +307,49 @@ and the whole database.
   a database role that may `CREATE EXTENSION vector` (the Compose `db` user may).
 - Login works but the session is dropped: see [TLS and a reverse proxy](#tls-and-a-reverse-proxy).
 - The admin cannot log in after pasting the hash: it was probably unquoted (see above).
+
+### Published images
+Every push to `main` and every version tag publishes the combined image to GitHub Container Registry as
+`ghcr.io/pascalwilbrink/seshat`, built for `linux/amd64` and `linux/arm64`, only after the CI checks (build, tests,
+image smoke test) passed. Pull requests build and smoke-test the image but never push.
+
+| Event | Tags |
+| --- | --- |
+| push to `main` | `main`, `sha-<short sha>` |
+| tag `vX.Y.Z` | `X.Y.Z`, `X.Y`, `X`, `latest` (`latest` is never set from `main`) |
+
+Release by pushing a tag: `git tag v1.2.3 && git push origin v1.2.3`.
+
+```sh
+docker pull ghcr.io/pascalwilbrink/seshat:1.2.3
+```
+
+**With Compose.** Set `SESHAT_IMAGE` in `.env` and run the published image instead of a local build:
+```sh
+echo 'SESHAT_IMAGE=ghcr.io/pascalwilbrink/seshat:1.2.3' >> .env
+docker compose --profile app pull app
+docker compose --profile app up -d --no-build
+```
+Without `SESHAT_IMAGE` the image is built locally as `seshat:local`, as before.
+
+**Runtime configuration.** The image holds no deployment-specific settings and no secrets. All configuration (see
+[Configure](#configure)) is passed at runtime, including `SESHAT_MCP_URL` for the MCP address shown in the UI. The only
+build-time settings are `API_URL` (fixed to the loopback address) and the web proxy body limit that follows
+`MAX_UPLOAD_BYTES` (50 MB default; see above for building a custom image).
+
+**Upgrading by tag.** Back up first, change the tag in `SESHAT_IMAGE`, then `pull` and `up -d --no-build` as above. Pin an
+exact `X.Y.Z` for reproducible deployments; `X.Y`, `X` and `latest` move with new releases. The rest of
+[Upgrade](#upgrade) applies.
+
+**Verifying provenance.** Images carry an SBOM and max-mode build provenance and a signed GitHub attestation:
+```sh
+gh attestation verify oci://ghcr.io/pascalwilbrink/seshat:1.2.3 --repo pascalwilbrink/seshat
+docker buildx imagetools inspect ghcr.io/pascalwilbrink/seshat:1.2.3 --format '{{ json .Provenance }}'
+```
+
+**One-time manual step.** After the first push the GHCR package is private by default. The repository owner sets its
+visibility (and which repositories and users have access) in the package settings on GitHub
+(Packages → `seshat` → Package settings). Until it is public, `docker pull` needs `docker login ghcr.io`.
 
 ### Upgrade
 1. Back up the database and the files volume (next section) and keep `.env`.
@@ -386,12 +434,14 @@ rewrite; check the hop count for your setup before relying on the per-IP limit. 
 described above and create a Workspace API key (see [Connect an agent over MCP](#connect-an-agent-over-mcp)).
 
 ### What CI checks
-The `image-smoke` job in `.github/workflows/ci.yml` builds the image on the runner (nothing is pushed), runs
+The `image-smoke` job in `.github/workflows/ci.yml` builds the image on the runner (nothing is pushed by it), runs
 `docker/verify-image.mjs` (image contents, non-root user, startup failures for invalid configuration and failed
 migrations, supervisor behaviour) and `docker/smoke.mjs`: with the real app profile and throwaway secrets it asserts
 `/api/health` returns `db: ok`, the login page on 3000 loads, the same-origin `/api/health` reaches the API, and `/mcp`
 answers `401` with `WWW-Authenticate: Bearer` without a valid key. It does not log in, ingest files or call MCP tools,
-and it does not test backups, upgrades or a reverse proxy.
+and it does not test backups, upgrades or a reverse proxy. On pushes to `main` and `vX.Y.Z` tags the `publish-image` job
+then pushes the image (see [Published images](#published-images)), pulls it back by digest and runs
+`docker/verify-image.mjs` against it.
 
 ## Scopes, routes and authorization
 - **Global is a scope, not a Workspace.** Every scoped resource is Global or in exactly one Workspace.
@@ -1157,7 +1207,7 @@ TypeScript SDK in **stateless Streamable HTTP** mode: every request is self-cont
 `DELETE` answer 405. The only credential is a [Workspace API key](#workspace-api-keys) sent as `Authorization: Bearer <key>`.
 A missing, unknown, revoked or expired key, and the admin session cookie, all give the same `401` with
 `WWW-Authenticate: Bearer`. The web app does not proxy `/mcp`: clients connect to the API port directly (set
-`NEXT_PUBLIC_SESHAT_MCP_URL` so the Workspace MCP page shows the public address).
+`SESHAT_MCP_URL` so the Workspace MCP page shows the public address).
 
 ### Create a key
 In the web app open **Workspace → API keys**, create a key and pick a preset, then copy the secret (it is shown once):

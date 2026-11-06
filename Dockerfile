@@ -22,9 +22,9 @@ COPY . .
 # processes run in the same container; there is no runtime override for it.
 ARG API_URL=http://127.0.0.1:4200
 ENV API_URL=${API_URL}
-# Public MCP address shown on the Workspace MCP page; inlined into the web bundle at build time (not a secret).
-ARG NEXT_PUBLIC_SESHAT_MCP_URL=http://localhost:4200/mcp
-ENV NEXT_PUBLIC_SESHAT_MCP_URL=${NEXT_PUBLIC_SESHAT_MCP_URL}
+# The web proxy's request body limit follows MAX_UPLOAD_BYTES at build time (empty = default 50 MB). Not a secret.
+ARG MAX_UPLOAD_BYTES=
+ENV MAX_UPLOAD_BYTES=${MAX_UPLOAD_BYTES}
 RUN pnpm build \
  && mkdir -p apps/web/public
 # Production dependency closure of the API (workspace package @seshat/domain included, no dev tooling) plus its build output.

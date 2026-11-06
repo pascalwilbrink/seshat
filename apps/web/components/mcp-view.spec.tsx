@@ -10,7 +10,7 @@ import { McpView } from './mcp-view';
 import { WorkspacesProvider } from './workspaces-provider';
 import { json, ws } from './shell.fixture';
 import type { ApiKeyDto } from '@/lib/api-types';
-import { DEFAULT_MCP_URL, resolveMcpEndpoint, toolsForPermissions } from '@/lib/mcp-config';
+import { DEFAULT_MCP_URL, resolveMcpEndpoint, serverMcpEndpoint, toolsForPermissions, type McpEndpoint } from '@/lib/mcp-config';
 
 const fetchMock = vi.fn();
 beforeEach(() => vi.stubGlobal('fetch', fetchMock));
@@ -45,7 +45,7 @@ const KEY_LIST = [
   key('exp', 'Lapsed key', ['files:read'], { status: 'expired', expiresAt: '2026-03-03T10:00:00.000Z' }),
 ];
 
-function setup(keysResponse: () => Response | Promise<Response> = () => json(KEY_LIST)) {
+function setup(keysResponse: () => Response | Promise<Response> = () => json(KEY_LIST), endpoint: McpEndpoint = { url: DEFAULT_MCP_URL, invalid: false }) {
   fetchMock.mockImplementation((url: string) => {
     if (url === '/api/global/workspaces') return Promise.resolve(json([alpha]));
     if (url === KEYS) return Promise.resolve(keysResponse());
@@ -53,7 +53,7 @@ function setup(keysResponse: () => Response | Promise<Response> = () => json(KEY
   });
   return render(
     <WorkspacesProvider>
-      <McpView slug="alpha" />
+      <McpView slug="alpha" endpoint={endpoint} />
     </WorkspacesProvider>,
   );
 }
@@ -93,6 +93,23 @@ describe('McpView endpoint and configuration', () => {
   });
 });
 
+describe('runtime MCP endpoint', () => {
+  it('shows the configured endpoint and the invalid notice', async () => {
+    setup(undefined, resolveMcpEndpoint('https://seshat.example.com/mcp'));
+    expect(await screen.findByLabelText('MCP endpoint')).toHaveTextContent('https://seshat.example.com/mcp');
+  });
+  it('flags an invalid setting', async () => {
+    setup(undefined, resolveMcpEndpoint('https://x/other'));
+    expect(await screen.findByRole('status')).toHaveTextContent(/SESHAT_MCP_URL/);
+  });
+  it('serverMcpEndpoint reads SESHAT_MCP_URL at call time', () => {
+    vi.stubEnv('SESHAT_MCP_URL', 'https://a.example.com/mcp');
+    expect(serverMcpEndpoint().url).toBe('https://a.example.com/mcp');
+    vi.stubEnv('SESHAT_MCP_URL', '');
+    expect(serverMcpEndpoint().url).toBe(DEFAULT_MCP_URL);
+  });
+});
+
 describe('resolveMcpEndpoint', () => {
   it('defaults when unset and normalizes valid URLs', () => {
     expect(resolveMcpEndpoint(undefined)).toEqual({ url: DEFAULT_MCP_URL, invalid: false });
@@ -100,7 +117,7 @@ describe('resolveMcpEndpoint', () => {
     expect(resolveMcpEndpoint('https://seshat.example.com/mcp/')).toEqual({ url: 'https://seshat.example.com/mcp', invalid: false });
   });
   it('rejects non-http(s), credentials, query and garbage', () => {
-    for (const bad of ['ftp://x/mcp', 'javascript:alert(1)', 'https://u:p@x/mcp', 'https://x/mcp?token=1', 'not a url', 'https://x/mcp#a']) {
+    for (const bad of ['ftp://x/mcp', 'javascript:alert(1)', 'https://u:p@x/mcp', 'https://x/mcp?token=1', 'not a url', 'https://x/mcp#a', 'https://x/other', 'https://x/']) {
       expect(resolveMcpEndpoint(bad)).toEqual({ url: DEFAULT_MCP_URL, invalid: true });
     }
   });

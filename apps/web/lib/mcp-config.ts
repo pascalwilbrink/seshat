@@ -10,8 +10,8 @@ export interface McpEndpoint {
 }
 
 /**
- * Validates the public MCP URL (`NEXT_PUBLIC_SESHAT_MCP_URL`). It must be an absolute http(s) URL without credentials, query or
- * fragment; trailing slashes are dropped. Anything else falls back to the development default and is flagged.
+ * Validates the public MCP URL (`SESHAT_MCP_URL`, a runtime setting). It must be an absolute http(s) URL without credentials, query or
+ * fragment whose path ends in `/mcp`; trailing slashes are dropped. Anything else falls back to the development default and is flagged.
  */
 export function resolveMcpEndpoint(raw: string | undefined): McpEndpoint {
   const value = raw?.trim();
@@ -19,16 +19,17 @@ export function resolveMcpEndpoint(raw: string | undefined): McpEndpoint {
   try {
     const u = new URL(value);
     const ok = (u.protocol === 'http:' || u.protocol === 'https:') && !u.username && !u.password && !u.search && !u.hash && u.host !== '';
-    if (!ok) return { url: DEFAULT_MCP_URL, invalid: true };
-    return { url: `${u.origin}${u.pathname.replace(/\/+$/, '')}`, invalid: false };
+    const path = u.pathname.replace(/\/+$/, '');
+    if (!ok || !path.endsWith('/mcp')) return { url: DEFAULT_MCP_URL, invalid: true };
+    return { url: `${u.origin}${path}`, invalid: false };
   } catch {
     return { url: DEFAULT_MCP_URL, invalid: true };
   }
 }
 
-/** Read at build time: Next inlines `NEXT_PUBLIC_*` only for this literal form. */
-export function publicMcpEndpoint(): McpEndpoint {
-  return resolveMcpEndpoint(process.env.NEXT_PUBLIC_SESHAT_MCP_URL);
+/** Server-side only: reads the runtime setting on each call (never inlined at build time). */
+export function serverMcpEndpoint(): McpEndpoint {
+  return resolveMcpEndpoint(process.env.SESHAT_MCP_URL);
 }
 
 export const KEY_PLACEHOLDER = '<YOUR_SESHAT_API_KEY>';
