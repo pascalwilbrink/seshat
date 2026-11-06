@@ -31,7 +31,7 @@ RUN pnpm build \
 RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
     pnpm --filter @seshat/api deploy --prod --legacy /out/api \
  && rm -rf /out/api/dist && cp -r apps/api/dist /out/api/dist \
- && rm -rf /out/api/src /out/api/test /out/api/scripts /out/api/vitest.config.ts /out/api/tsconfig.json
+ && rm -f /out/api/.env.example && rm -rf /out/api/src /out/api/test /out/api/scripts /out/api/vitest.config.ts /out/api/tsconfig.json
 
 # ---- runtime ----
 FROM node:${NODE_VERSION}-bookworm-slim AS runtime

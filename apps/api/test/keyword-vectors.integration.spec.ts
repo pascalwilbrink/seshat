@@ -58,6 +58,7 @@ describeIntegration('keyword search vectors (real PostgreSQL with pgvector)', ()
     await ds.initialize();
     // Everything before the keyword migration, so existing rows can be backfilled by it.
     await ds.runMigrations({ transaction: 'each' });
+    await ds.undoLastMigration({ transaction: 'each' }); // usage
     await ds.undoLastMigration({ transaction: 'each' }); // file provenance
     await ds.undoLastMigration({ transaction: 'each' }); // keyword vectors
   });
@@ -65,8 +66,8 @@ describeIntegration('keyword search vectors (real PostgreSQL with pgvector)', ()
     await iso?.dispose();
   });
 
-  it('is discovered as the second to last migration', () => {
-    expect(migrationNames().at(-2)).toBe('AddKeywordSearchVectors1763100000000');
+  it('is discovered as the third to last migration', () => {
+    expect(migrationNames().at(-3)).toBe('AddKeywordSearchVectors1763100000000');
   });
 
   it('indexes rows that existed before the migration', async () => {
@@ -209,7 +210,7 @@ describeIntegration('keyword search vectors (real PostgreSQL with pgvector)', ()
     expect(await q(`SELECT 1 FROM pg_indexes WHERE schemaname = $1 AND indexname LIKE '%tsv_gin'`, [iso.schema])).toEqual([]);
     expect(await q(`SELECT 1 FROM pg_indexes WHERE schemaname = $1 AND indexname = 'IDX_chunks_embedding_hnsw'`, [iso.schema])).toHaveLength(1);
     expect((await q(`SELECT content FROM chunks WHERE id = $1`, [c]))[0]!.content).toBe('kilo roundtrip');
-    expect((await ds.runMigrations({ transaction: 'each' })).map((m) => m.name)).toEqual(['AddKeywordSearchVectors1763100000000', 'AddFileProvenance1763200000000']);
+    expect((await ds.runMigrations({ transaction: 'each' })).map((m) => m.name)).toEqual(['AddKeywordSearchVectors1763100000000', 'AddFileProvenance1763200000000', 'CreateUsage1763300000000']);
     expect(await chunkHits('roundtrip')).toContain(c);
   });
 });
